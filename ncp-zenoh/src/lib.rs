@@ -7,11 +7,14 @@
 //! crebain already speaks. Observers (e.g. pid_vla) attach to the data-plane
 //! keys read-only with zero changes to the control path.
 //!
-//! Each plane gets the QoS its job needs (see [`Plane`]):
-//! - **perception** — Best-Effort + CongestionControl=DROP (conflate to latest);
+//! Each plane gets the QoS its job needs (see [`Plane`]). NCP sets
+//! CongestionControl + priority + express per plane; wire reliability is left at
+//! Zenoh's default (the minimal feature set here does not enable the `unstable`
+//! reliability API):
+//! - **perception** — CongestionControl=DROP + DataHigh priority (conflate to latest);
 //! - **action** — express + DROP + RealTime priority (lowest-latency setpoint),
 //!   safety-gated by the sender;
-//! - **control/observation** — reliable.
+//! - **control/observation** — CongestionControl=BLOCK (no drop).
 //!
 //! Async API (native to Zenoh; all NCP consumers run on tokio). The in-process
 //! [`ncp_core::Bus`] / [`ncp_core::LocalBus`] remain for tests and co-process use.
@@ -283,9 +286,12 @@ impl ZenohBus {
         Ok(())
     }
 
-    pub fn close(&self) {
-        // Best-effort; the session closes when the last Arc is dropped.
-        let _ = self.session.clone();
+    /// Gracefully close the underlying Zenoh session (undeclare queryables /
+    /// subscribers and flush). In Zenoh 1.x `Session::close` takes `&self` and
+    /// works even when the `Arc<Session>` is shared (e.g. by an embedded
+    /// `ZenohControlTransport`), so this is correct despite `ZenohBus: Clone`.
+    pub async fn close(&self) -> Result<()> {
+        self.session.close().await.map_err(err("zenoh close"))
     }
 }
 

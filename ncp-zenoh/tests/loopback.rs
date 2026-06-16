@@ -79,5 +79,5 @@ async fn zenoh_closed_loop_roundtrip() {
     // ReflexController pushes back toward the origin: negative x velocity.
     assert!(vx < 0.0, "command should drive back toward origin, got vx={vx}");
 
-    bus.close();
+    let _ = bus.close().await;
 }

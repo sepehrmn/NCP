@@ -127,6 +127,13 @@ impl CodecSpec {
         let mut buffers: Map<Vec<f64>> = Map::new();
         let mut units: Map<Option<String>> = Map::new();
         for m in &self.decoder {
+            // `component` is deserialized from an untrusted CodecSpec; bound the
+            // per-channel buffer growth so a hostile/garbage value cannot drive an
+            // unbounded Vec<f64> allocation (OOM/DoS). 4096 >> any real dimensionality.
+            const MAX_COMPONENT: usize = 4096;
+            if m.component >= MAX_COMPONENT {
+                continue;
+            }
             let rate = *pop_rates.get(&m.population).unwrap_or(&m.rate_range_hz.0);
             let value =
                 lerp(rate, m.rate_range_hz.0, m.rate_range_hz.1, m.value_range.0, m.value_range.1);

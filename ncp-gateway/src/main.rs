@@ -67,10 +67,16 @@ async fn main() {
 
     let addr = bridge_addr.clone();
     let serve = bus
-        .serve_rpc(move |req: Vec<u8>| match forward_to_python(&addr, &req) {
-            Ok(reply) if !reply.is_empty() => reply,
-            Ok(_) => error_frame("empty reply from Python bridge"),
-            Err(e) => error_frame(&format!("bridge unreachable at {addr}: {e}")),
+        .serve_rpc(move |req: Vec<u8>| {
+            // forward_to_python is blocking std::net I/O (30s timeouts). block_in_place
+            // frees this tokio worker so other tasks on the shared multi-thread runtime
+            // (data planes, Zenoh internals) aren't starved while the bridge round-trip
+            // is in flight. Valid here: ncp-gateway runs on the multi-thread runtime.
+            tokio::task::block_in_place(|| match forward_to_python(&addr, &req) {
+                Ok(reply) if !reply.is_empty() => reply,
+                Ok(_) => error_frame("empty reply from Python bridge"),
+                Err(e) => error_frame(&format!("bridge unreachable at {addr}: {e}")),
+            })
         })
         .await;
     if let Err(e) = serve {
@@ -82,6 +88,6 @@ async fn main() {
     println!("[ncp-gateway] observation/sensor/command planes: '{realm}/session/<id>/<plane>'");
     println!("[ncp-gateway] Ctrl-C to stop.");
     let _ = tokio::signal::ctrl_c().await;
-    bus.close();
+    let _ = bus.close().await;
     println!("[ncp-gateway] stopped.");
 }

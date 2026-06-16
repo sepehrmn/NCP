@@ -120,12 +120,18 @@ impl LinkMonitor {
 
     /// Record an arrived message with sequence `seq`.
     pub fn on_seq(&mut self, seq: i64) {
+        // Cap the CUSUM bookkeeping iterations per call so a huge/hostile seq jump
+        // (peer restart, counter glitch, malicious sender, e.g. seq=9_000_000_000)
+        // cannot stall this thread. The one-sided CUSUM trips at
+        // ~threshold/(1-ref_loss) losses (~6 for the defaults), far below the cap,
+        // so a larger real gap changes nothing observable past the trip point.
+        const MAX_GAP_OBSERVE: i64 = 256;
         if let Some(e) = self.expected {
             if seq > e {
-                // Missed e..=seq-1.
-                let missed = (seq - e) as usize;
-                for _ in 0..missed {
-                    self.lost += 1;
+                // Missed e..=seq-1. `missed` is positive (guarded by `seq > e`).
+                let missed = seq - e;
+                self.lost += missed; // exact loss accounting (unbounded count is fine)
+                for _ in 0..missed.min(MAX_GAP_OBSERVE) {
                     self.observe(true);
                 }
             } else if seq < e {
@@ -216,5 +222,17 @@ mod tests {
         assert!(m.is_burst(), "a long gap should flag a burst");
         assert!(m.loss_rate() > 0.0);
         assert_eq!(m.status(0.0).kind, "link_status");
+    }
+
+    #[test]
+    fn huge_seq_jump_is_bounded_but_lost_stays_exact() {
+        // A hostile/glitched peer can send a seq billions ahead. The CUSUM
+        // bookkeeping must not loop per-missed-seq (that would stall the thread),
+        // yet `lost` must remain the exact gap count. Returning at all proves the bound.
+        let mut m = LinkMonitor::new("uav1", 0.05, 5.0);
+        m.on_seq(0); // expected -> 1
+        m.on_seq(1_000_000_001); // gap = 1_000_000_001 - 1 = 1_000_000_000
+        assert_eq!(m.lost, 1_000_000_000, "lost count stays exact regardless of the loop bound");
+        assert!(m.is_burst(), "a billion-seq gap trips the burst detector");
     }
 }

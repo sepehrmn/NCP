@@ -74,7 +74,7 @@ loop is one `nest.Run(chunk)` binding sense→act; only the wire diverges.
 
 ```text
 {realm}/rpc                              control-plane RPC   queryable, reliable
-{realm}/session/{id}/sensor[/{name}]     perception plane    pub/sub, Best-Effort + DROP (conflate)
+{realm}/session/{id}/sensor[/{name}]     perception plane    pub/sub, DROP, conflate to latest (lossy-OK)
 {realm}/session/{id}/command[/{name}]    action plane        pub/sub, express + DROP + RealTime, safety-gated (ttl/HOLD/ESTOP)
 {realm}/session/{id}/observation         neural / diagnostic pub/sub — free read-only observer tap (e.g. pid_vla)
 ```

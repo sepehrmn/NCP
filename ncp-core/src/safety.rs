@@ -54,7 +54,10 @@ impl SafetyGovernor {
         if let (Some(radius), Some(sensor)) = (self.limits.geofence_radius_m, sensor) {
             if let Some(pos) = sensor.channels.get("pose_position") {
                 let r = pos.data.iter().map(|c| c * c).sum::<f64>().sqrt();
-                if r > radius {
+                // `radius > 0.0` disables a zero/negative fence (matches loop.py);
+                // a non-finite `r` (NaN from upstream) fails safe to ESTOP rather
+                // than silently passing the `r > radius` comparison.
+                if radius > 0.0 && (!r.is_finite() || r > radius) {
                     return CommandFrame {
                         t: command.t,
                         seq: command.seq,
@@ -71,6 +74,17 @@ impl SafetyGovernor {
             (self.limits.max_speed_mps, out.channels.get("velocity_setpoint").cloned())
         {
             let mag = vel.data.iter().map(|c| c * c).sum::<f64>().sqrt();
+            if !mag.is_finite() {
+                // A non-finite command (e.g. divide-by-zero upstream) would slip
+                // past the `mag > max_speed` comparison unclamped — fail safe to HOLD.
+                return CommandFrame {
+                    t: command.t,
+                    seq: command.seq,
+                    mode: Mode::Hold,
+                    channels: zero(),
+                    ..Default::default()
+                };
+            }
             if max_speed > 0.0 && mag > max_speed {
                 let k = max_speed / mag;
                 out.channels.insert(
@@ -128,5 +142,39 @@ mod tests {
         wd.on_command(1.0, 200.0); // ttl 200 ms
         assert!(!wd.should_hold(1.1), "within ttl -> apply");
         assert!(wd.should_hold(1.3), "0.3 s > 0.2 s ttl -> HOLD");
+    }
+
+    fn channels_with(name: &str, x: f64, unit: &str) -> crate::messages::Map<ChannelValue> {
+        let mut m = crate::messages::Map::new();
+        m.insert(name.to_string(), ChannelValue::vec3(x, 0.0, 0.0, Some(unit)));
+        m
+    }
+
+    #[test]
+    fn nan_velocity_setpoint_fails_safe_to_hold() {
+        let gov = SafetyGovernor::new(SafetyLimits { max_speed_mps: Some(5.0), ..Default::default() });
+        let cmd = CommandFrame { channels: channels_with("velocity_setpoint", f64::NAN, "m/s"), ..Default::default() };
+        // Fresh sensor (now == last → not stale); a NaN must not slip past the clamp.
+        let out = gov.govern(&cmd, None, 1.0, Some(1.0));
+        assert_eq!(out.mode, Mode::Hold, "NaN velocity must fail safe to HOLD");
+        let v = out.channels.get("velocity_setpoint").expect("setpoint present");
+        assert!(v.data.iter().all(|c| *c == 0.0), "HOLD zeroes the setpoint");
+    }
+
+    #[test]
+    fn nan_position_triggers_estop_under_active_geofence() {
+        let gov = SafetyGovernor::new(SafetyLimits { geofence_radius_m: Some(10.0), ..Default::default() });
+        let sensor = SensorFrame { channels: channels_with("pose_position", f64::NAN, "m"), ..Default::default() };
+        let out = gov.govern(&CommandFrame::default(), Some(&sensor), 1.0, Some(1.0));
+        assert_eq!(out.mode, Mode::Estop, "NaN position must fail safe to ESTOP under an active geofence");
+    }
+
+    #[test]
+    fn zero_geofence_radius_is_disabled() {
+        let gov = SafetyGovernor::new(SafetyLimits { geofence_radius_m: Some(0.0), ..Default::default() });
+        // pose 3,0,0 → r=3 > 0; with radius 0 the fence is disabled (matches loop.py).
+        let sensor = SensorFrame { channels: channels_with("pose_position", 3.0, "m"), ..Default::default() };
+        let out = gov.govern(&CommandFrame::default(), Some(&sensor), 1.0, Some(1.0));
+        assert_eq!(out.mode, Mode::Active, "radius 0 disables the geofence; no ESTOP");
     }
 }
