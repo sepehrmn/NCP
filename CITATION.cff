@@ -7,8 +7,8 @@ type: software
 authors:
   - family-names: Mahmoudian
     given-names: Sepehr
-repository-code: 'https://github.com/sepehrmn/ncp'
-url: 'https://github.com/sepehrmn/ncp'
+repository-code: 'https://github.com/sepehrmn/NCP'
+url: 'https://github.com/sepehrmn/NCP'
 abstract: >-
   A versioned, transport-agnostic, project-agnostic wire contract that lets a
   spiking neural simulation serve external robot, UAV, and analysis systems for

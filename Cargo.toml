@@ -29,7 +29,7 @@ version = "0.1.0"
 edition = "2021"
 license = "MIT"
 authors = ["Sepehr Mahmoudian"]
-repository = "https://github.com/sepehrmn/ncp"
+repository = "https://github.com/sepehrmn/NCP"
 rust-version = "1.81.0"
 
 [workspace.dependencies]
