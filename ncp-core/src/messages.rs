@@ -655,6 +655,13 @@ pub struct CommandFrame {
     pub mode: Mode,
     pub ttl_ms: f64,
     pub channels: Map<ChannelValue>,
+    /// Packetized predictive control: future setpoints. `channels` is tick 0;
+    /// `horizon[i]` applies at tick i+1, spaced `horizon_dt_ms` apart. The
+    /// actuator replays these through dropouts (see `ActionBuffer`), bounded by
+    /// `ttl_ms`. Empty = legacy single-step command. Backward compatible: a
+    /// consumer that ignores `horizon` still reads `channels` (tick 0).
+    pub horizon: Vec<Map<ChannelValue>>,
+    pub horizon_dt_ms: Option<f64>,
 }
 
 impl Default for CommandFrame {
@@ -668,6 +675,8 @@ impl Default for CommandFrame {
             mode: Mode::Active,
             ttl_ms: 200.0,
             channels: Map::new(),
+            horizon: Vec::new(),
+            horizon_dt_ms: None,
         }
     }
 }
@@ -700,6 +709,40 @@ impl Default for ControlStatus {
             loop_latency_ms: 0.0,
             safety_ok: true,
             note: None,
+        }
+    }
+}
+
+/// Link-health telemetry from the seq-gap / CUSUM monitor (published on the
+/// control plane). `burst=true` flags sustained loss — a possible jam — at which
+/// point the only sound response is to fail safe, not add redundancy.
+#[derive(Serialize, Deserialize, Clone, PartialEq, Debug)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
+#[serde(default)]
+pub struct LinkStatus {
+    pub ncp_version: String,
+    pub kind: String,
+    pub session_id: String,
+    pub t: f64,
+    pub last_seq: i64,
+    pub received: i64,
+    pub lost: i64,
+    pub loss_rate: f64,
+    pub burst: bool,
+}
+
+impl Default for LinkStatus {
+    fn default() -> Self {
+        Self {
+            ncp_version: ncp_version(),
+            kind: "link_status".into(),
+            session_id: String::new(),
+            t: 0.0,
+            last_seq: -1,
+            received: 0,
+            lost: 0,
+            loss_rate: 0.0,
+            burst: false,
         }
     }
 }
