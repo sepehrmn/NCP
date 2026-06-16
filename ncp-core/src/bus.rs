@@ -187,6 +187,59 @@ mod tests {
     }
 
     #[test]
+    fn multi_uav_varying_entities_route_with_no_crosstalk() {
+        use crate::keys::Keys;
+        let bus = LocalBus::new();
+        let k = Keys::default();
+
+        // Engram subscribes to each UAV's whole sensor set (any count) via the
+        // per-UAV sensor wildcard; the sample key identifies which sensor.
+        let sensors = Arc::new(Mutex::new(Vec::<String>::new()));
+        for uav in ["uav1", "uav2", "uav3"] {
+            let sink = sensors.clone();
+            bus.declare_subscriber(
+                &k.sensor_glob(uav),
+                Arc::new(move |key: &str, _p: &[u8]| sink.lock().unwrap().push(key.to_string())),
+            );
+        }
+        // Plant-side per-actuator subscribers (varying counts per UAV).
+        let cmds = Arc::new(Mutex::new(Vec::<(String, String)>::new()));
+        for (uav, act) in [("uav1", "cmd_vel"), ("uav2", "gimbal"), ("uav3", "rotor2")] {
+            let sink = cmds.clone();
+            let label = format!("{uav}/{act}");
+            bus.declare_subscriber(
+                &k.command_named(uav, act),
+                Arc::new(move |_key: &str, p: &[u8]| {
+                    sink.lock().unwrap().push((label.clone(), String::from_utf8_lossy(p).into_owned()))
+                }),
+            );
+        }
+
+        // Varying sensor counts: uav1=3, uav2=1, uav3=2.
+        for (uav, name) in [
+            ("uav1", "imu"), ("uav1", "cam"), ("uav1", "lidar"),
+            ("uav2", "imu"),
+            ("uav3", "imu"), ("uav3", "gps"),
+        ] {
+            bus.put(&k.sensor_named(uav, name), b"x").unwrap();
+        }
+        // Commands to specific actuators (rotor0 has no subscriber).
+        bus.put(&k.command_named("uav3", "rotor2"), b"R2").unwrap();
+        bus.put(&k.command_named("uav1", "cmd_vel"), b"V1").unwrap();
+        bus.put(&k.command_named("uav3", "rotor0"), b"R0").unwrap();
+
+        let s = sensors.lock().unwrap();
+        let count = |u: &str| s.iter().filter(|key| key.contains(&format!("/session/{u}/"))).count();
+        assert_eq!((count("uav1"), count("uav2"), count("uav3")), (3, 1, 2),
+                   "each UAV's sensor-glob receives exactly its own varying sensor set");
+
+        let c = cmds.lock().unwrap();
+        assert!(c.iter().any(|(l, v)| l == "uav3/rotor2" && v == "R2"));
+        assert!(c.iter().any(|(l, v)| l == "uav1/cmd_vel" && v == "V1"));
+        assert!(!c.iter().any(|(_, v)| v == "R0"), "rotor0 has no subscriber -> not delivered (no crosstalk)");
+    }
+
+    #[test]
     fn local_bus_rpc_and_pubsub() {
         let bus = LocalBus::new();
         bus.declare_queryable("engram/ncp/rpc", Arc::new(|p: &[u8]| {

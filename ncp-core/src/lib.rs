@@ -39,6 +39,7 @@ pub mod bus;
 pub mod codec;
 pub mod keys;
 pub mod messages;
+pub mod resilience;
 pub mod safety;
 pub mod transport;
 
@@ -46,6 +47,7 @@ pub use bus::{Bus, BusError, LocalBus, NcpBusClient, NcpBusServer, QueryHandler,
 pub use codec::{CodecSpec, DecoderChannelMap, EncoderChannelMap, default_uav_velocity_codec};
 pub use keys::{Keys, DEFAULT_REALM};
 pub use messages::*;
+pub use resilience::{max_horizon_len, ActionBuffer, LinkMonitor};
 pub use safety::{CommandWatchdog, SafetyGovernor};
 pub use transport::{
     ControlTransport, Controller, InProcessTransport, NeuroControlLoop, ReflexController,

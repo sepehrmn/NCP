@@ -67,9 +67,28 @@ impl Keys {
         format!("{}/observation", self.session(id))
     }
 
+    /// All of a session's sensors (wildcard) — e.g. Engram subscribing to every
+    /// sensor of one UAV, whatever the count: `…/session/{id}/sensor/**`.
+    pub fn sensor_glob(&self, id: &str) -> String {
+        format!("{}/sensor/**", self.session(id))
+    }
+
+    /// All of a session's actuators: `…/session/{id}/command/**`.
+    pub fn command_glob(&self, id: &str) -> String {
+        format!("{}/command/**", self.session(id))
+    }
+
     /// A wildcard over every plane of a session, e.g. for an observer tap.
     pub fn session_glob(&self, id: &str) -> String {
         format!("{}/**", self.session(id))
+    }
+
+    /// Every session in the realm — the fleet wildcard (all UAVs):
+    /// `{realm}/session/**`. Per-entity `seq` is scoped to each named
+    /// sensor/actuator stream, so a `LinkMonitor`/`ActionBuffer` is instantiated
+    /// per `(session, entity)`.
+    pub fn fleet_glob(&self) -> String {
+        format!("{}/session/**", self.realm)
     }
 }
 

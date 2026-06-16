@@ -209,6 +209,46 @@ impl ZenohBus {
         self.subscribe(&self.keys.sensor(session_id), callback).await
     }
 
+    // ───────────── per-named-entity (multi-sensor / multi-actuator) ─────────────
+    // A UAV with a varying number of sensors/actuators addresses each by name on
+    // its own sub-key; the callback's `key` argument identifies which entity. Per
+    // entity `seq` is its own stream (one LinkMonitor/ActionBuffer per entity).
+
+    /// Publish a `SensorFrame` for one named sensor: `…/sensor/{name}`.
+    pub async fn put_sensor_named(&self, session_id: &str, name: &str, payload: &[u8]) -> Result<()> {
+        self.put(&self.keys.sensor_named(session_id, name), payload, Plane::Perception).await
+    }
+
+    /// Publish a `CommandFrame` to one named actuator: `…/command/{name}`.
+    pub async fn publish_command_named(&self, session_id: &str, name: &str, payload: &[u8]) -> Result<()> {
+        self.put(&self.keys.command_named(session_id, name), payload, Plane::Action).await
+    }
+
+    /// Subscribe to **all** of a session's sensors (any count): `…/sensor/**`.
+    pub async fn subscribe_sensors_glob<F>(&self, session_id: &str, callback: F) -> Result<()>
+    where
+        F: Fn(String, Vec<u8>) + Send + Sync + 'static,
+    {
+        self.subscribe(&self.keys.sensor_glob(session_id), callback).await
+    }
+
+    /// Subscribe to one named actuator's command stream: `…/command/{name}`.
+    pub async fn subscribe_command_named<F>(&self, session_id: &str, name: &str, callback: F) -> Result<()>
+    where
+        F: Fn(String, Vec<u8>) + Send + Sync + 'static,
+    {
+        self.subscribe(&self.keys.command_named(session_id, name), callback).await
+    }
+
+    /// Subscribe across the whole fleet (every session/plane): `{realm}/session/**`
+    /// — e.g. an observer/dashboard over all UAVs.
+    pub async fn subscribe_fleet<F>(&self, callback: F) -> Result<()>
+    where
+        F: Fn(String, Vec<u8>) + Send + Sync + 'static,
+    {
+        self.subscribe(&self.keys.fleet_glob(), callback).await
+    }
+
     // ───────────────────────── primitives ─────────────────────────
 
     /// Publish on `key` with the QoS of `plane`.

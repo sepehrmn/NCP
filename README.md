@@ -53,7 +53,16 @@ NCP is written in Rust and **works from Python, TypeScript and C++** off the
 - [`INTEGRATING.md`](INTEGRATING.md) — per-language quickstart + 10-adopter-lens evaluation (simple, minimally invasive).
 - [`NEST_REALTIME.md`](NEST_REALTIME.md) — can NCP read NEST live without stopping it (like MUSIC)? Yes; 10-way analysis.
 - [`PERFORMANCE.md`](PERFORMANCE.md) — does NCP bottleneck NEST? The one real bottleneck (recorder readback) found + fixed; per-tick cost model.
-- [`RESILIENCE.md`](RESILIENCE.md) — robustness over a poor/jammed link (packetized predictive control, fail-safe, and where Partial Information Decomposition fits), pruned to what's worth building.
+- [`RESILIENCE.md`](RESILIENCE.md) — robustness over a poor/jammed link (packetized predictive control, fail-safe, and where Partial Information Decomposition fits), pruned to what's worth building. Primitives shipped in `ncp-core`: `ActionBuffer` (predictive replay + ttl HOLD), `CommandWatchdog`, `LinkMonitor` (seq-gap + CUSUM) + `LinkStatus`.
+- [`NEUROMORPHIC.md`](NEUROMORPHIC.md) — NCP as the stable interface for neuromorphic hardware (Loihi/Lava, SpiNNaker/PyNN, BrainScaleS) and the sim-before-deploy / differential-testing workflow.
+- [`PLASTICITY.md`](PLASTICITY.md) — single neuron / population / custom-parameter neurons / multimeter, and long- + short-term + reward-modulated plasticity driven by plant (UAV) feedback (`Observable::Weight`, the reward stimulus channel).
+
+**Multiple UAVs, varying sensors/actuators:** one session per UAV; each named
+sensor/actuator on its own sub-key (`…/session/{uav}/sensor/{name}`,
+`…/command/{name}`); Engram taps a UAV's whole set with `…/sensor/**` and the fleet
+with `{realm}/session/**` (`Keys::sensor_glob`/`command_glob`/`fleet_glob`,
+`ZenohBus::put_sensor_named`/`subscribe_command_named`/`subscribe_fleet`). `seq` is
+per-entity-stream; instantiate one `LinkMonitor`/`ActionBuffer` per entity.
 
 ## The three planes
 
