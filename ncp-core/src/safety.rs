@@ -82,3 +82,51 @@ impl SafetyGovernor {
         out
     }
 }
+
+/// Plant-side deadline backstop that **enforces `CommandFrame.ttl_ms`** — which is
+/// otherwise carried on the wire but never checked. Feed each accepted command's
+/// **local** arrival time and its `ttl_ms`; the plant must fail safe (HOLD to a
+/// zero/safe setpoint) once the latest command has expired or none has arrived.
+/// Using the plant's own clock avoids controller↔plant clock skew. This is the
+/// deadline backstop the packetized-predictive-control horizon (see RESILIENCE.md)
+/// relies on: replay buffered predictions only while unexpired, HOLD on drain.
+#[derive(Clone, Debug, Default)]
+pub struct CommandWatchdog {
+    last_recv_s: Option<f64>,
+    ttl_s: f64,
+}
+
+impl CommandWatchdog {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Record an accepted command received at local time `now_s` with its `ttl_ms`.
+    pub fn on_command(&mut self, now_s: f64, ttl_ms: f64) {
+        self.last_recv_s = Some(now_s);
+        self.ttl_s = ttl_ms.max(0.0) / 1000.0;
+    }
+
+    /// True if the plant must fail safe to HOLD: no command yet, or the latest is
+    /// past its ttl. (A non-positive ttl is treated as immediately stale.)
+    pub fn should_hold(&self, now_s: f64) -> bool {
+        match self.last_recv_s {
+            None => true,
+            Some(t) => self.ttl_s <= 0.0 || (now_s - t) > self.ttl_s,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn command_watchdog_enforces_ttl() {
+        let mut wd = CommandWatchdog::new();
+        assert!(wd.should_hold(0.0), "no command yet -> HOLD");
+        wd.on_command(1.0, 200.0); // ttl 200 ms
+        assert!(!wd.should_hold(1.1), "within ttl -> apply");
+        assert!(wd.should_hold(1.3), "0.3 s > 0.2 s ttl -> HOLD");
+    }
+}

@@ -46,7 +46,7 @@ pub use bus::{Bus, BusError, LocalBus, NcpBusClient, NcpBusServer, QueryHandler,
 pub use codec::{CodecSpec, DecoderChannelMap, EncoderChannelMap, default_uav_velocity_codec};
 pub use keys::{Keys, DEFAULT_REALM};
 pub use messages::*;
-pub use safety::SafetyGovernor;
+pub use safety::{CommandWatchdog, SafetyGovernor};
 pub use transport::{
     ControlTransport, Controller, InProcessTransport, NeuroControlLoop, ReflexController,
 };

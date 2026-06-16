@@ -48,10 +48,12 @@ NCP is written in Rust and **works from Python, TypeScript and C++** off the
 - **C / C++** — include `ncp-cpp/include/ncp.h` and link `ncp_cpp`
   (`cargo build -p ncp-cpp`); see `ncp-cpp/examples/demo.cpp`.
 
-Integrating a new project is meant to be simple and minimally invasive — see
-[`INTEGRATING.md`](INTEGRATING.md) (per-language quickstart + a 10-adopter-lens
-evaluation). Whether NCP can read NEST in real time without stopping the
-simulation (like MUSIC): [`NEST_REALTIME.md`](NEST_REALTIME.md).
+### Docs
+- [`RATIONALE.md`](RATIONALE.md) — why NCP exists, unbiased vs the alternatives.
+- [`INTEGRATING.md`](INTEGRATING.md) — per-language quickstart + 10-adopter-lens evaluation (simple, minimally invasive).
+- [`NEST_REALTIME.md`](NEST_REALTIME.md) — can NCP read NEST live without stopping it (like MUSIC)? Yes; 10-way analysis.
+- [`PERFORMANCE.md`](PERFORMANCE.md) — does NCP bottleneck NEST? The one real bottleneck (recorder readback) found + fixed; per-tick cost model.
+- [`RESILIENCE.md`](RESILIENCE.md) — robustness over a poor/jammed link (packetized predictive control, fail-safe, and where Partial Information Decomposition fits), pruned to what's worth building.
 
 ## The three planes
 
