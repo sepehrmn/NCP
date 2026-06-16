@@ -1,0 +1,109 @@
+{
+  "$defs": {
+    "ChannelValue": {
+      "description": "A channel sample: a flat list of floats plus an optional unit string.\n\nWidth carries the semantics (1=scalar, 3=vec3, 4=quat, N=array), so the\nenvelope stays generic and any project can add channels without schema\nchanges.",
+      "properties": {
+        "data": {
+          "items": {
+            "type": "number"
+          },
+          "title": "Data",
+          "type": "array"
+        },
+        "unit": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Unit"
+        }
+      },
+      "title": "ChannelValue",
+      "type": "object"
+    },
+    "Mode": {
+      "enum": [
+        "init",
+        "active",
+        "hold",
+        "estop"
+      ],
+      "title": "Mode",
+      "type": "string"
+    }
+  },
+  "description": "Controller -> plant: the proposed actuation.\n\n``horizon`` carries packetized-predictive-control future setpoints (``channels``\nis tick 0; ``horizon[i]`` is tick i+1, ``horizon_dt_ms`` apart) so the actuator\ncan replay through dropouts, bounded by ``ttl_ms`` (see ``ncp-core``\n``ActionBuffer`` / ``RESILIENCE.md``). Empty ``horizon`` = legacy single-step.",
+  "properties": {
+    "ncp_version": {
+      "default": "0.1",
+      "title": "Ncp Version",
+      "type": "string"
+    },
+    "kind": {
+      "const": "command_frame",
+      "default": "command_frame",
+      "title": "Kind",
+      "type": "string"
+    },
+    "seq": {
+      "default": 0,
+      "title": "Seq",
+      "type": "integer"
+    },
+    "t": {
+      "default": 0.0,
+      "title": "T",
+      "type": "number"
+    },
+    "frame_id": {
+      "default": "world",
+      "title": "Frame Id",
+      "type": "string"
+    },
+    "mode": {
+      "$ref": "#/$defs/Mode",
+      "default": "active"
+    },
+    "ttl_ms": {
+      "default": 200.0,
+      "title": "Ttl Ms",
+      "type": "number"
+    },
+    "channels": {
+      "additionalProperties": {
+        "$ref": "#/$defs/ChannelValue"
+      },
+      "title": "Channels",
+      "type": "object"
+    },
+    "horizon": {
+      "items": {
+        "additionalProperties": {
+          "$ref": "#/$defs/ChannelValue"
+        },
+        "type": "object"
+      },
+      "title": "Horizon",
+      "type": "array"
+    },
+    "horizon_dt_ms": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Horizon Dt Ms"
+    }
+  },
+  "title": "CommandFrame",
+  "type": "object"
+}

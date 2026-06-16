@@ -10,7 +10,7 @@ interface across the simulation → hardware transition**.
 ## Where NCP helps
 
 ### 1. One interface, swap the substrate (the headline use)
-A robot/UAV client (crebain) and an analysis client (pid_vla) are written against
+A robot/UAV client and an analysis/observer client are written against
 NCP, not against NEST. Replace the backend — NEST → a neuromorphic chip — behind
 the *same* `OpenSession`/`StepRequest`/`ObservationFrame` wire, and **no client
 changes**. The brain's substrate becomes a deployment choice, not an API. This is
@@ -62,9 +62,10 @@ are real, lossy links, and the `ActionBuffer`/`ttl_ms`/HOLD fail-safe + the
 `LinkMonitor` apply unchanged. NCP turns "SNN on a chip driving a real robot" into
 the same protocol you debugged in sim.
 
-### 5. pid_vla as a sim-to-hardware fidelity metric
-pid_vla already taps NCP and computes Partial Information Decomposition over the
-`(V,L,D,A)` stream. Run it against the NEST backend *and* the chip backend and you
+### 5. An information-theoretic analysis client as a sim-to-hardware fidelity metric
+An analysis/observer client (e.g. one computing Partial Information Decomposition /
+PID) can tap NCP over the `(V,L,D,A)` observation stream. Run it against the NEST
+backend *and* the chip backend and you
 get an **information-theoretic** comparison: does the chip preserve the same
 unique/redundant/synergistic information flow {sensors → action} as the simulator,
 or does device noise/quantization destroy a synergistic channel? That is a far

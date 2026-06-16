@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build-test:
+    name: fmt + clippy + test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Pinned to the workspace rust-version (Cargo.toml: rust-version = "1.81.0").
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.81.0"
+          components: rustfmt, clippy
+
+      - name: Cache cargo build artifacts
+        uses: Swatinem/rust-cache@v2
+
+      - name: Format check
+        run: cargo fmt --all --check
+
+      # ncp-python (PyO3) is excluded from the cargo gate: its test binary needs
+      # libpython on the runtime linker path, and it is built/tested via maturin
+      # + pytest (the PyPI path), not the cargo workspace. See ROADMAP.md.
+      - name: Clippy (deny warnings)
+        run: cargo clippy --workspace --exclude ncp-python --all-targets -- -D warnings
+
+      - name: Build workspace
+        run: cargo build --workspace --exclude ncp-python
+
+      - name: Test workspace
+        run: cargo test --workspace --exclude ncp-python
+
+      # Regenerate + ensure the TS bindings build (ncp-core `ts` feature).
+      - name: Test ncp-core with TS bindings
+        run: cargo test -p ncp-core --features ts

@@ -4,22 +4,29 @@
 //! `{realm}/rpc`; the perception, action and observation **data planes** are
 //! *pub/sub* on per-session keys (see [`ncp_core::keys`]). Peers address data,
 //! not server addresses — location-transparent, many-to-many, and the medium
-//! crebain already speaks. Observers (e.g. pid_vla) attach to the data-plane
-//! keys read-only with zero changes to the control path.
+//! a ROS 2 robot client already speaks. Observers (e.g. an analysis/observer
+//! client) attach to the data-plane keys read-only with zero changes to the
+//! control path.
 //!
 //! Each plane gets the QoS its job needs (see [`Plane`]). NCP sets
 //! CongestionControl + priority + express per plane; wire reliability is left at
 //! Zenoh's default (the minimal feature set here does not enable the `unstable`
 //! reliability API):
-//! - **perception** — CongestionControl=DROP + DataHigh priority (conflate to latest);
+//! - **perception** — CongestionControl=DROP + DataHigh priority (TX-queue DROP
+//!   only when the queue is full — no conflation guarantee, i.e. it is *not*
+//!   guaranteed to drop to the latest frame, only to drop *some* frames);
 //! - **action** — express + DROP + RealTime priority (lowest-latency setpoint),
 //!   safety-gated by the sender;
 //! - **control/observation** — CongestionControl=BLOCK (no drop).
 //!
+//! Observation publish reuses the Control plane's reliable/BLOCK QoS, so under
+//! congestion it back-pressures the publisher rather than dropping — keep the
+//! observation stream low-rate.
+//!
 //! Async API (native to Zenoh; all NCP consumers run on tokio). The in-process
 //! [`ncp_core::Bus`] / [`ncp_core::LocalBus`] remain for tests and co-process use.
 
-use ncp_core::keys::Keys;
+use ncp_core::keys::{valid_id_segment, Keys};
 use std::sync::Arc;
 use zenoh::qos::{CongestionControl, Priority};
 use zenoh::{Config, Session};
@@ -30,7 +37,8 @@ pub use zenoh::Config as ZenohConfig;
 /// A transport plane with its QoS profile.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Plane {
-    /// Sensors → Engram. Lossy-OK: drop the stale frame.
+    /// Sensors → Engram. Lossy-OK: TX-queue DROP only when full, no conflation
+    /// guarantee (drops some frames, not necessarily down to the latest).
     Perception,
     /// Engram → actuators. Lowest-latency, express, safety-critical.
     Action,
@@ -73,6 +81,19 @@ fn err<E: std::fmt::Display>(ctx: &str) -> impl Fn(E) -> ZenohError + '_ {
     move |e| ZenohError(format!("{ctx}: {e}"))
 }
 
+/// Reject a caller-supplied id segment (session id, entity name) before it is
+/// interpolated into a key expression. Guards against empty/whitespace ids and
+/// Zenoh key-expression metacharacters (`/ * $ # ?`) that would silently widen a
+/// publish/subscribe to the wrong keyspace. Glob subscribers are intentionally
+/// *not* guarded — their wildcards are constructed by the key builders.
+fn check_id(kind: &str, id: &str) -> Result<()> {
+    if valid_id_segment(id) {
+        Ok(())
+    } else {
+        Err(ZenohError(format!("invalid {kind} id segment: {id:?}")))
+    }
+}
+
 /// An NCP-aware Zenoh session. Wraps a [`zenoh::Session`] with the NCP key scheme
 /// and per-plane QoS.
 #[derive(Clone)]
@@ -105,10 +126,14 @@ impl ZenohBus {
         })
     }
 
-    /// Wrap an already-open session (so a host app, e.g. crebain, can share one
-    /// Zenoh session across ROS traffic and NCP).
+    /// Wrap an already-open session (so a host app, e.g. a ROS 2 robot client,
+    /// can share one Zenoh session across ROS traffic and NCP).
     pub fn from_session(session: Arc<Session>, keys: Keys) -> Self {
-        Self { session, keys, subs: Arc::new(std::sync::Mutex::new(Vec::new())) }
+        Self {
+            session,
+            keys,
+            subs: Arc::new(std::sync::Mutex::new(Vec::new())),
+        }
     }
 
     pub fn keys(&self) -> &Keys {
@@ -128,17 +153,31 @@ impl ZenohBus {
             .payload(message)
             .await
             .map_err(err("zenoh get"))?;
+        // Capture the last error reply so a remote error (server replied with an
+        // error) is distinguishable from a dead server (no reply at all).
+        let mut last_err: Option<String> = None;
         while let Ok(reply) = replies.recv_async().await {
-            if let Ok(sample) = reply.result() {
-                return Ok(sample.payload().to_bytes().to_vec());
+            match reply.result() {
+                Ok(sample) => return Ok(sample.payload().to_bytes().to_vec()),
+                Err(e) => {
+                    last_err = Some(String::from_utf8_lossy(&e.payload().to_bytes()).into_owned())
+                }
             }
         }
-        Err(ZenohError(format!("no reply for {}", self.keys.rpc())))
+        match last_err {
+            Some(e) => Err(ZenohError(format!(
+                "rpc error reply for {}: {e}",
+                self.keys.rpc()
+            ))),
+            None => Err(ZenohError(format!("no reply for {}", self.keys.rpc()))),
+        }
     }
 
     /// Publish a `SensorFrame` (perception plane) for a session.
     pub async fn put_sensor(&self, session_id: &str, payload: &[u8]) -> Result<()> {
-        self.put(&self.keys.sensor(session_id), payload, Plane::Perception).await
+        check_id("session", session_id)?;
+        self.put(&self.keys.sensor(session_id), payload, Plane::Perception)
+            .await
     }
 
     /// Subscribe to the command (action) plane — the plant receives `CommandFrame`s.
@@ -146,7 +185,9 @@ impl ZenohBus {
     where
         F: Fn(String, Vec<u8>) + Send + Sync + 'static,
     {
-        self.subscribe(&self.keys.command(session_id), callback).await
+        check_id("session", session_id)?;
+        self.subscribe(&self.keys.command(session_id), callback)
+            .await
     }
 
     /// Subscribe to the observation plane (the free read-only observer tap).
@@ -154,7 +195,9 @@ impl ZenohBus {
     where
         F: Fn(String, Vec<u8>) + Send + Sync + 'static,
     {
-        self.subscribe(&self.keys.observation(session_id), callback).await
+        check_id("session", session_id)?;
+        self.subscribe(&self.keys.observation(session_id), callback)
+            .await
     }
 
     /// Subscribe to every plane of a session (observer/diagnostic tap).
@@ -162,7 +205,8 @@ impl ZenohBus {
     where
         F: Fn(String, Vec<u8>) + Send + Sync + 'static,
     {
-        self.subscribe(&self.keys.session_glob(session_id), callback).await
+        self.subscribe(&self.keys.session_glob(session_id), callback)
+            .await
     }
 
     // ───────────────────────── server side ─────────────────────────
@@ -188,7 +232,11 @@ impl ZenohBus {
                     .unwrap_or_default();
                 let reply = handler(req);
                 let ke = query.key_expr().clone();
-                let _ = query.reply(ke, reply).await;
+                if let Err(e) = query.reply(ke, reply).await {
+                    // No log crate in this minimal feature set; surface to stderr so
+                    // a failed reply isn't silently dropped.
+                    eprintln!("ncp-zenoh: rpc reply failed: {e}");
+                }
             }
         });
         Ok(())
@@ -196,12 +244,16 @@ impl ZenohBus {
 
     /// Publish an observation frame (JSON bytes) on a session's observation key.
     pub async fn publish_observation(&self, session_id: &str, payload: &[u8]) -> Result<()> {
-        self.put(&self.keys.observation(session_id), payload, Plane::Control).await
+        check_id("session", session_id)?;
+        self.put(&self.keys.observation(session_id), payload, Plane::Control)
+            .await
     }
 
     /// Publish a command frame on a session's action plane (safety-gated upstream).
     pub async fn publish_command(&self, session_id: &str, payload: &[u8]) -> Result<()> {
-        self.put(&self.keys.command(session_id), payload, Plane::Action).await
+        check_id("session", session_id)?;
+        self.put(&self.keys.command(session_id), payload, Plane::Action)
+            .await
     }
 
     /// Subscribe to the sensor (perception) plane for a session.
@@ -209,7 +261,9 @@ impl ZenohBus {
     where
         F: Fn(String, Vec<u8>) + Send + Sync + 'static,
     {
-        self.subscribe(&self.keys.sensor(session_id), callback).await
+        check_id("session", session_id)?;
+        self.subscribe(&self.keys.sensor(session_id), callback)
+            .await
     }
 
     // ───────────── per-named-entity (multi-sensor / multi-actuator) ─────────────
@@ -218,13 +272,37 @@ impl ZenohBus {
     // entity `seq` is its own stream (one LinkMonitor/ActionBuffer per entity).
 
     /// Publish a `SensorFrame` for one named sensor: `…/sensor/{name}`.
-    pub async fn put_sensor_named(&self, session_id: &str, name: &str, payload: &[u8]) -> Result<()> {
-        self.put(&self.keys.sensor_named(session_id, name), payload, Plane::Perception).await
+    pub async fn put_sensor_named(
+        &self,
+        session_id: &str,
+        name: &str,
+        payload: &[u8],
+    ) -> Result<()> {
+        check_id("session", session_id)?;
+        check_id("sensor name", name)?;
+        self.put(
+            &self.keys.sensor_named(session_id, name),
+            payload,
+            Plane::Perception,
+        )
+        .await
     }
 
     /// Publish a `CommandFrame` to one named actuator: `…/command/{name}`.
-    pub async fn publish_command_named(&self, session_id: &str, name: &str, payload: &[u8]) -> Result<()> {
-        self.put(&self.keys.command_named(session_id, name), payload, Plane::Action).await
+    pub async fn publish_command_named(
+        &self,
+        session_id: &str,
+        name: &str,
+        payload: &[u8],
+    ) -> Result<()> {
+        check_id("session", session_id)?;
+        check_id("actuator name", name)?;
+        self.put(
+            &self.keys.command_named(session_id, name),
+            payload,
+            Plane::Action,
+        )
+        .await
     }
 
     /// Subscribe to **all** of a session's sensors (any count): `…/sensor/**`.
@@ -232,15 +310,24 @@ impl ZenohBus {
     where
         F: Fn(String, Vec<u8>) + Send + Sync + 'static,
     {
-        self.subscribe(&self.keys.sensor_glob(session_id), callback).await
+        self.subscribe(&self.keys.sensor_glob(session_id), callback)
+            .await
     }
 
     /// Subscribe to one named actuator's command stream: `…/command/{name}`.
-    pub async fn subscribe_command_named<F>(&self, session_id: &str, name: &str, callback: F) -> Result<()>
+    pub async fn subscribe_command_named<F>(
+        &self,
+        session_id: &str,
+        name: &str,
+        callback: F,
+    ) -> Result<()>
     where
         F: Fn(String, Vec<u8>) + Send + Sync + 'static,
     {
-        self.subscribe(&self.keys.command_named(session_id, name), callback).await
+        check_id("session", session_id)?;
+        check_id("actuator name", name)?;
+        self.subscribe(&self.keys.command_named(session_id, name), callback)
+            .await
     }
 
     /// Subscribe across the whole fleet (every session/plane): `{realm}/session/**`
@@ -320,13 +407,20 @@ impl ZenohControlTransport {
             }
         })
         .await?;
-        Ok(Self { bus, session_id, latest, handle: tokio::runtime::Handle::current() })
+        Ok(Self {
+            bus,
+            session_id,
+            latest,
+            handle: tokio::runtime::Handle::current(),
+        })
     }
 }
 
 impl ncp_core::ControlTransport for ZenohControlTransport {
     fn send_command(&self, command: &ncp_core::CommandFrame) {
-        let Ok(bytes) = serde_json::to_vec(command) else { return };
+        let Ok(bytes) = serde_json::to_vec(command) else {
+            return;
+        };
         let bus = self.bus.clone();
         let session_id = self.session_id.clone();
         // Fire-and-forget put on the action plane (express + DROP + RealTime QoS).
@@ -401,5 +495,38 @@ mod tests {
         assert!(Plane::Action.express());
         assert_eq!(Plane::Control.congestion(), CongestionControl::Block);
         assert!(!Plane::Perception.express());
+    }
+
+    #[test]
+    fn check_id_rejects_keyexpr_metacharacters() {
+        // A clean id passes.
+        assert!(check_id("session", "uav3").is_ok());
+        // Metacharacters that would widen/escape the key expression are rejected
+        // BEFORE the key is built (fail-closed boundary, FIX 7).
+        for bad in [
+            "", " ", "a/b", "*", "**", "a*", "$kid", "a#b", "a?b", "a b", "a\tb",
+        ] {
+            assert!(
+                check_id("session", bad).is_err(),
+                "expected reject for {bad:?}"
+            );
+        }
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+    async fn put_sensor_rejects_bad_session_id_at_the_entry_point() {
+        // Open an isolated bus (no scouting/listen/connect) so the test needs no
+        // router. The FIX 7 guard rejects before any key is built or I/O happens,
+        // so a metacharacter session id resolves to Err on the public entry point.
+        let mut cfg = Config::default();
+        let _ = cfg.insert_json5("scouting/multicast/enabled", "false");
+        let _ = cfg.insert_json5("listen/endpoints", "[]");
+        let _ = cfg.insert_json5("connect/endpoints", "[]");
+        let bus = ZenohBus::with_config(cfg, Keys::default()).await.unwrap();
+        let e = bus.put_sensor("bad/id", b"{}").await.unwrap_err();
+        assert!(e.to_string().contains("invalid session id segment"), "{e}");
+        // A glob-escaping entity name on a named publish is rejected too.
+        assert!(bus.put_sensor_named("uav3", "imu*", b"{}").await.is_err());
+        let _ = bus.close().await;
     }
 }

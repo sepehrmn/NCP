@@ -63,7 +63,7 @@ and **`T_run` dominates**. NCP adds no meaningful slowdown.
   free; it is not an added bottleneck (NEST is single-kernel regardless).
 - **Raw spike streaming** at high rate produces large JSON. Use `RATE`/counts for
   the control loop; stream raw spikes only on the observation/analysis plane
-  (pid_vla), which is loss-tolerant.
+  (an analysis/observer client), which is loss-tolerant.
 
 ## Compared with SOTA (June 2026)
 

@@ -6,7 +6,9 @@
 
 use ncp_core::keys::Keys;
 use ncp_core::ControlTransport;
-use ncp_core::{ChannelValue, CommandFrame, Map, NeuroControlLoop, ReflexController, SafetyLimits, SensorFrame};
+use ncp_core::{
+    ChannelValue, CommandFrame, Map, NeuroControlLoop, ReflexController, SafetyLimits, SensorFrame,
+};
 use ncp_zenoh::{ZenohBus, ZenohConfig, ZenohControlTransport};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -14,14 +16,17 @@ use std::time::Duration;
 fn loopback_cfg() -> ZenohConfig {
     let mut c = ZenohConfig::default();
     // No external discovery needed: one in-process session, local delivery.
-    c.insert_json5("scouting/multicast/enabled", "false").unwrap();
+    c.insert_json5("scouting/multicast/enabled", "false")
+        .unwrap();
     c.insert_json5("scouting/gossip/enabled", "false").unwrap();
     c
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn zenoh_closed_loop_roundtrip() {
-    let bus = ZenohBus::with_config(loopback_cfg(), Keys::default()).await.unwrap();
+    let bus = ZenohBus::with_config(loopback_cfg(), Keys::default())
+        .await
+        .unwrap();
 
     // The "plant" subscribes to the action plane.
     let last_cmd: Arc<Mutex<Option<CommandFrame>>> = Arc::new(Mutex::new(None));
@@ -36,12 +41,18 @@ async fn zenoh_closed_loop_roundtrip() {
 
     // Controller: ZenohControlTransport (subscribe sensor / publish command) + a
     // reflex loop. Fixed clock so the safety governor sees the sensor as fresh.
-    let transport = ZenohControlTransport::new(bus.clone(), "uav1").await.unwrap();
+    let transport = ZenohControlTransport::new(bus.clone(), "uav1")
+        .await
+        .unwrap();
     let mut control = NeuroControlLoop::new(
         transport,
         ReflexController::default(),
         20.0,
-        SafetyLimits { max_speed_mps: Some(1.5), command_timeout_ms: 5000.0, ..Default::default() },
+        SafetyLimits {
+            max_speed_mps: Some(1.5),
+            command_timeout_ms: 5000.0,
+            ..Default::default()
+        },
     )
     .with_clock(Box::new(|| 0.0));
     // Let the subscription declarations settle.
@@ -51,9 +62,20 @@ async fn zenoh_closed_loop_roundtrip() {
     // ticks; both planes use DROP QoS, so we run the loop until the round trip
     // converges rather than relying on a single sample landing (bounded retry).
     let mut channels = Map::new();
-    channels.insert("pose_position".into(), ChannelValue::vec3(1.0, 0.0, 0.0, Some("m")));
-    channels.insert("pose_velocity".into(), ChannelValue::vec3(0.0, 0.0, 0.0, Some("m/s")));
-    let sensor = SensorFrame { seq: 7, t: 0.0, channels, ..Default::default() };
+    channels.insert(
+        "pose_position".into(),
+        ChannelValue::vec3(1.0, 0.0, 0.0, Some("m")),
+    );
+    channels.insert(
+        "pose_velocity".into(),
+        ChannelValue::vec3(0.0, 0.0, 0.0, Some("m/s")),
+    );
+    let sensor = SensorFrame {
+        seq: 7,
+        t: 0.0,
+        channels,
+        ..Default::default()
+    };
     let bytes = serde_json::to_vec(&sensor).unwrap();
 
     let mut received: Option<CommandFrame> = None;
@@ -77,7 +99,10 @@ async fn zenoh_closed_loop_roundtrip() {
     let received = received.expect("plant never received a command over Zenoh");
     let vx = received.channels["velocity_setpoint"].data[0];
     // ReflexController pushes back toward the origin: negative x velocity.
-    assert!(vx < 0.0, "command should drive back toward origin, got vx={vx}");
+    assert!(
+        vx < 0.0,
+        "command should drive back toward origin, got vx={vx}"
+    );
 
     let _ = bus.close().await;
 }

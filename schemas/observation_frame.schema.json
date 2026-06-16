@@ -1,0 +1,123 @@
+{
+  "$defs": {
+    "Observable": {
+      "enum": [
+        "spikes",
+        "V_m",
+        "rate",
+        "weight"
+      ],
+      "title": "Observable",
+      "type": "string"
+    },
+    "Observation": {
+      "properties": {
+        "port": {
+          "title": "Port",
+          "type": "string"
+        },
+        "target": {
+          "title": "Target",
+          "type": "string"
+        },
+        "observable": {
+          "$ref": "#/$defs/Observable"
+        },
+        "times": {
+          "items": {
+            "type": "number"
+          },
+          "title": "Times",
+          "type": "array"
+        },
+        "values": {
+          "items": {
+            "type": "number"
+          },
+          "title": "Values",
+          "type": "array"
+        },
+        "senders": {
+          "items": {
+            "type": "integer"
+          },
+          "title": "Senders",
+          "type": "array"
+        },
+        "unit": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Unit"
+        }
+      },
+      "required": [
+        "port",
+        "target",
+        "observable"
+      ],
+      "title": "Observation",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "ncp_version": {
+      "default": "0.1",
+      "title": "Ncp Version",
+      "type": "string"
+    },
+    "kind": {
+      "const": "observation_frame",
+      "default": "observation_frame",
+      "title": "Kind",
+      "type": "string"
+    },
+    "session_id": {
+      "title": "Session Id",
+      "type": "string"
+    },
+    "seq": {
+      "default": 0,
+      "title": "Seq",
+      "type": "integer"
+    },
+    "t": {
+      "default": 0.0,
+      "title": "T",
+      "type": "number"
+    },
+    "sim_time_ms": {
+      "default": 0.0,
+      "title": "Sim Time Ms",
+      "type": "number"
+    },
+    "records": {
+      "additionalProperties": {
+        "$ref": "#/$defs/Observation"
+      },
+      "title": "Records",
+      "type": "object"
+    },
+    "calibrated_posterior": {
+      "default": false,
+      "title": "Calibrated Posterior",
+      "type": "boolean"
+    },
+    "is_simulation_output": {
+      "default": true,
+      "title": "Is Simulation Output",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "session_id"
+  ],
+  "title": "ObservationFrame",
+  "type": "object"
+}

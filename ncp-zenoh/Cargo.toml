@@ -1,11 +1,14 @@
 [package]
 name = "ncp-zenoh"
-description = "Neuro-Control Protocol (NCP) — the recommended decoupled transport: Zenoh queryable (RPC) + pub/sub (perception/action/observation planes) with per-plane QoS."
+description = "Neuro-Cybernetic Protocol (NCP) — the recommended decoupled transport: Zenoh queryable (RPC) + pub/sub (perception/action/observation planes) with per-plane QoS."
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+authors.workspace = true
 repository.workspace = true
 rust-version.workspace = true
+keywords = ["zenoh", "neurorobotics", "protocol", "transport", "robotics"]
+categories = ["network-programming", "science::robotics", "simulation"]
 
 [dependencies]
 ncp-core = { workspace = true }
@@ -14,8 +17,8 @@ serde_json = { workspace = true }
 # Latest stable Zenoh. Default features pull a heavy plugin chain we don't need;
 # instead enable exactly the transport links NCP uses — TCP/UDP plus same-host
 # shared-memory (the zero-copy perception path). Cargo feature-unification is
-# additive, so a host (e.g. crebain, which enables zenoh's default features) still
-# gets the full set, unified to its 1.9 pin.
+# additive, so a host (e.g. a robot/UAV client, which enables zenoh's default
+# features) still gets the full set, unified to its 1.9 pin.
 zenoh = { version = "1.9", default-features = false, features = [
     "transport_tcp",
     "transport_udp",

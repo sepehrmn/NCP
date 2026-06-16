@@ -8,8 +8,10 @@
 //! through this module and be guaranteed wire-identical to the Rust and TS peers.
 //!
 //! Build the importable extension with maturin (`maturin develop -m
-//! ncp-python/Cargo.toml`); `cargo build`/`check -p ncp-python` verifies it
-//! compiles via the `rlib` target without a Python link step.
+//! ncp-python/Cargo.toml --features extension-module`). The `extension-module`
+//! feature is **off by default** so `cargo build`/`check`/`test --workspace`
+//! works on Linux/Windows (enabling it unconditionally suppresses the libpython
+//! link and breaks the non-Python build/test); maturin must enable it explicitly.
 //!
 //! ```python
 //! import ncp
@@ -19,7 +21,10 @@
 //! ncp.decode_command(codec_json, '{"vel_x":200.0}', t=0.0, seq=7)  # CommandFrame JSON
 //! ```
 
-use ncp_core::{ChannelValue, CodecSpec, CommandFrame, Keys as CoreKeys, Map, Mode, SafetyGovernor, SafetyLimits, SensorFrame};
+use ncp_core::{
+    ChannelValue, CodecSpec, CommandFrame, Keys as CoreKeys, Map, Mode, SafetyGovernor,
+    SafetyLimits, SensorFrame,
+};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 
@@ -39,7 +44,9 @@ impl Keys {
     #[new]
     #[pyo3(signature = (realm = None))]
     fn new(realm: Option<String>) -> Self {
-        Keys { inner: CoreKeys::new(realm.unwrap_or_else(|| ncp_core::DEFAULT_REALM.to_string())) }
+        Keys {
+            inner: CoreKeys::new(realm.unwrap_or_else(|| ncp_core::DEFAULT_REALM.to_string())),
+        }
     }
     fn rpc(&self) -> String {
         self.inner.rpc()
@@ -77,11 +84,12 @@ fn check_version(version: &str, strict: bool) -> PyResult<bool> {
 #[pyfunction]
 fn encode_rates(codec_json: &str, sensor_json: &str) -> PyResult<String> {
     let codec: CodecSpec = serde_json::from_str(codec_json).map_err(val)?;
-    let sensor: Option<SensorFrame> = if sensor_json.trim().is_empty() || sensor_json.trim() == "null" {
-        None
-    } else {
-        Some(serde_json::from_str(sensor_json).map_err(val)?)
-    };
+    let sensor: Option<SensorFrame> =
+        if sensor_json.trim().is_empty() || sensor_json.trim() == "null" {
+            None
+        } else {
+            Some(serde_json::from_str(sensor_json).map_err(val)?)
+        };
     let rates = codec.encode(sensor.as_ref());
     serde_json::to_string(&rates).map_err(val)
 }
@@ -90,7 +98,14 @@ fn encode_rates(codec_json: &str, sensor_json: &str) -> PyResult<String> {
 /// codec.
 #[pyfunction]
 #[pyo3(signature = (codec_json, rates_json, t = 0.0, seq = 0, frame_id = "world", mode = "active"))]
-fn decode_command(codec_json: &str, rates_json: &str, t: f64, seq: i64, frame_id: &str, mode: &str) -> PyResult<String> {
+fn decode_command(
+    codec_json: &str,
+    rates_json: &str,
+    t: f64,
+    seq: i64,
+    frame_id: &str,
+    mode: &str,
+) -> PyResult<String> {
     let codec: CodecSpec = serde_json::from_str(codec_json).map_err(val)?;
     let rates: Map<f64> = serde_json::from_str(rates_json).map_err(val)?;
     let mode = parse_mode(mode)?;
@@ -123,17 +138,24 @@ fn govern(
     let limits: SafetyLimits = serde_json::from_str(limits_json).map_err(val)?;
     let command: CommandFrame = serde_json::from_str(command_json).map_err(val)?;
     let sensor: Option<SensorFrame> = match sensor_json {
-        Some(s) if !s.trim().is_empty() && s.trim() != "null" => Some(serde_json::from_str(s).map_err(val)?),
+        Some(s) if !s.trim().is_empty() && s.trim() != "null" => {
+            Some(serde_json::from_str(s).map_err(val)?)
+        }
         _ => None,
     };
-    let gov = SafetyGovernor::new(limits);
+    // `govern` latches ESTOP, so it takes `&mut self`. This wrapper is one-shot
+    // (fresh governor per call), so the latch never persists across FFI calls.
+    let mut gov = SafetyGovernor::new(limits);
     let out = gov.govern(&command, sensor.as_ref(), now_s, last_sensor_s);
     serde_json::to_string(&out).map_err(val)
 }
 
 /// Validate an NCP message JSON of a given `kind` by parsing it through the Rust
-/// type and re-serializing — raises `ValueError` on a malformed message, else
-/// returns the canonical JSON. Guarantees a Python peer's frames match the wire.
+/// type and re-serializing — raises `ValueError` on a message the Rust type
+/// rejects, else returns its canonical JSON. This checks structural/serde
+/// conformance to the wire schema (field names, types, required fields); it is
+/// not a semantic/range check, so a structurally valid frame may still be
+/// rejected downstream (e.g. by the safety governor).
 #[pyfunction]
 fn validate(kind: &str, json: &str) -> PyResult<String> {
     use ncp_core::*;
@@ -156,7 +178,9 @@ fn validate(kind: &str, json: &str) -> PyResult<String> {
         "command_frame" => rt!(CommandFrame),
         "control_status" => rt!(ControlStatus),
         "capabilities" => rt!(Capabilities),
-        other => Err(PyValueError::new_err(format!("unknown NCP message kind {other:?}"))),
+        other => Err(PyValueError::new_err(format!(
+            "unknown NCP message kind {other:?}"
+        ))),
     }
 }
 

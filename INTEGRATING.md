@@ -13,10 +13,11 @@ alternatives (the honest comparison, including where it is *not*, is in
 2. **Your project owns its mapping, in your repo, in your language.** A thin
    adapter maps your sensors/actuators ↔ NCP `SensorFrame`/`CommandFrame`/stimulus/
    record. That is the *only* code you write.
-3. **It bolts on without touching what you have.** crebain's integration is a
-   self-contained `src/ncp/` module behind an off-by-default `ncp` Cargo feature —
-   the default build and its command-contract test are unchanged. pid_vla's is a
-   read-only observer crate that drives nothing. Neither edited existing code.
+3. **It bolts on without touching what you have.** A robot/UAV client's
+   integration can be a self-contained `src/ncp/` module behind an off-by-default
+   `ncp` Cargo feature — the default build and its command-contract test stay
+   unchanged. An analysis/observer client's is a read-only observer crate that
+   drives nothing. Neither needs to edit existing code.
 
 ## 5-minute quickstart, per language (one canonical Rust core)
 
@@ -45,7 +46,8 @@ import type { SensorFrame, CommandFrame, ObservationFrame } from "ncp/bindings";
 ```cpp
 #include "ncp.h"
 char* key = ncp_key_command("engram/ncp", "uav1");   // ncp_string_free(key)
-char* cmd = ncp_decode_command(codec_json, rates_json, 0.0, 7);
+char* cmd = ncp_decode_command(codec_json, rates_json, 0.0, 7,
+                               /*frame_id=*/NULL, /*mode=*/NULL);
 ```
 
 In every language the *behavior* (key scheme, codec, version guard, safety,
@@ -54,9 +56,10 @@ validation) comes from the one Rust core, so all peers are wire-identical.
 ## Picking the integration mechanism (decreasing preference)
 
 1. **Client-side adapter** (best) — your NCP client + mapping in your repo, against
-   `ncp-core`/`ncp.proto`/`schemas/`. See `crebain/src-tauri/src/ncp/`.
+   `ncp-core`/`ncp.proto`/`schemas/` (your client's own `src/ncp/` adapter module).
 2. **Declarative profile** (data, not code) — a JSON mapping a generic loader
-   consumes; no per-project class in Engram. See `examples/crebain.profile.json`.
+   consumes; no per-project class in Engram (a declarative profile shipped by your
+   client).
 3. **Plugin package** — `engram-ncp-<you>` registering a profile via entry points.
 
 ## Evaluated from 10 adopter lenses — what each gets, what was missing, what changed

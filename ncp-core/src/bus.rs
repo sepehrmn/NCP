@@ -72,13 +72,18 @@ impl LocalBus {
 
 impl Bus for LocalBus {
     fn declare_queryable(&self, key: &str, handler: QueryHandler) {
-        self.queryables.lock().unwrap().push((key.to_string(), handler));
+        self.queryables
+            .lock()
+            .unwrap()
+            .push((key.to_string(), handler));
     }
 
     fn query(&self, key: &str, payload: &[u8]) -> Result<Vec<u8>, BusError> {
         let handler = {
             let qs = self.queryables.lock().unwrap();
-            qs.iter().find(|(pat, _)| key_matches(pat, key)).map(|(_, h)| h.clone())
+            qs.iter()
+                .find(|(pat, _)| key_matches(pat, key))
+                .map(|(_, h)| h.clone())
         };
         match handler {
             Some(h) => Ok(h(payload)),
@@ -93,7 +98,10 @@ impl Bus for LocalBus {
     fn put(&self, key: &str, payload: &[u8]) -> Result<(), BusError> {
         let matched: Vec<SubCallback> = {
             let subs = self.subs.lock().unwrap();
-            subs.iter().filter(|(pat, _)| key_matches(pat, key)).map(|(_, cb)| cb.clone()).collect()
+            subs.iter()
+                .filter(|(pat, _)| key_matches(pat, key))
+                .map(|(_, cb)| cb.clone())
+                .collect()
         };
         for cb in matched {
             cb(key, payload);
@@ -122,13 +130,15 @@ impl<B: Bus> NcpBusClient<B> {
     /// Subscribe to the observation stream for a session; `callback` gets raw
     /// JSON payloads.
     pub fn subscribe_observations(&self, session_id: &str, callback: SubCallback) {
-        self.bus.declare_subscriber(&self.keys.observation(session_id), callback);
+        self.bus
+            .declare_subscriber(&self.keys.observation(session_id), callback);
     }
 
     /// Subscribe to the command (action) plane — what a plant does to receive
     /// `CommandFrame`s.
     pub fn subscribe_commands(&self, session_id: &str, callback: SubCallback) {
-        self.bus.declare_subscriber(&self.keys.command(session_id), callback);
+        self.bus
+            .declare_subscriber(&self.keys.command(session_id), callback);
     }
 
     /// Publish a `SensorFrame` (perception plane) — what a plant does each tick.
@@ -168,7 +178,8 @@ impl<B: Bus> NcpBusServer<B> {
 
     /// Subscribe to the sensor (perception) plane for a session.
     pub fn subscribe_sensors(&self, session_id: &str, callback: SubCallback) {
-        self.bus.declare_subscriber(&self.keys.sensor(session_id), callback);
+        self.bus
+            .declare_subscriber(&self.keys.sensor(session_id), callback);
     }
 }
 
@@ -210,16 +221,21 @@ mod tests {
             bus.declare_subscriber(
                 &k.command_named(uav, act),
                 Arc::new(move |_key: &str, p: &[u8]| {
-                    sink.lock().unwrap().push((label.clone(), String::from_utf8_lossy(p).into_owned()))
+                    sink.lock()
+                        .unwrap()
+                        .push((label.clone(), String::from_utf8_lossy(p).into_owned()))
                 }),
             );
         }
 
         // Varying sensor counts: uav1=3, uav2=1, uav3=2.
         for (uav, name) in [
-            ("uav1", "imu"), ("uav1", "cam"), ("uav1", "lidar"),
+            ("uav1", "imu"),
+            ("uav1", "cam"),
+            ("uav1", "lidar"),
             ("uav2", "imu"),
-            ("uav3", "imu"), ("uav3", "gps"),
+            ("uav3", "imu"),
+            ("uav3", "gps"),
         ] {
             bus.put(&k.sensor_named(uav, name), b"x").unwrap();
         }
@@ -229,34 +245,55 @@ mod tests {
         bus.put(&k.command_named("uav3", "rotor0"), b"R0").unwrap();
 
         let s = sensors.lock().unwrap();
-        let count = |u: &str| s.iter().filter(|key| key.contains(&format!("/session/{u}/"))).count();
-        assert_eq!((count("uav1"), count("uav2"), count("uav3")), (3, 1, 2),
-                   "each UAV's sensor-glob receives exactly its own varying sensor set");
+        let count = |u: &str| {
+            s.iter()
+                .filter(|key| key.contains(&format!("/session/{u}/")))
+                .count()
+        };
+        assert_eq!(
+            (count("uav1"), count("uav2"), count("uav3")),
+            (3, 1, 2),
+            "each UAV's sensor-glob receives exactly its own varying sensor set"
+        );
 
         let c = cmds.lock().unwrap();
         assert!(c.iter().any(|(l, v)| l == "uav3/rotor2" && v == "R2"));
         assert!(c.iter().any(|(l, v)| l == "uav1/cmd_vel" && v == "V1"));
-        assert!(!c.iter().any(|(_, v)| v == "R0"), "rotor0 has no subscriber -> not delivered (no crosstalk)");
+        assert!(
+            !c.iter().any(|(_, v)| v == "R0"),
+            "rotor0 has no subscriber -> not delivered (no crosstalk)"
+        );
     }
 
     #[test]
     fn local_bus_rpc_and_pubsub() {
         let bus = LocalBus::new();
-        bus.declare_queryable("engram/ncp/rpc", Arc::new(|p: &[u8]| {
-            let mut v = b"echo:".to_vec();
-            v.extend_from_slice(p);
-            v
-        }));
+        bus.declare_queryable(
+            "engram/ncp/rpc",
+            Arc::new(|p: &[u8]| {
+                let mut v = b"echo:".to_vec();
+                v.extend_from_slice(p);
+                v
+            }),
+        );
         let reply = bus.query("engram/ncp/rpc", b"hi").unwrap();
         assert_eq!(reply, b"echo:hi");
 
         let seen = Arc::new(Mutex::new(Vec::<String>::new()));
         let seen2 = seen.clone();
-        bus.declare_subscriber("engram/ncp/session/s1/**", Arc::new(move |_k: &str, p: &[u8]| {
-            seen2.lock().unwrap().push(String::from_utf8_lossy(p).into_owned());
-        }));
-        bus.put("engram/ncp/session/s1/observation", b"obs").unwrap();
-        bus.put("engram/ncp/session/s2/observation", b"nope").unwrap();
+        bus.declare_subscriber(
+            "engram/ncp/session/s1/**",
+            Arc::new(move |_k: &str, p: &[u8]| {
+                seen2
+                    .lock()
+                    .unwrap()
+                    .push(String::from_utf8_lossy(p).into_owned());
+            }),
+        );
+        bus.put("engram/ncp/session/s1/observation", b"obs")
+            .unwrap();
+        bus.put("engram/ncp/session/s2/observation", b"nope")
+            .unwrap();
         assert_eq!(&*seen.lock().unwrap(), &vec!["obs".to_string()]);
     }
 }

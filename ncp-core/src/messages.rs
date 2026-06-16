@@ -1,15 +1,18 @@
 //! NCP wire messages — the normative payload contract.
 //!
-//! Every type here serializes to **exactly** the JSON that the Python reference
-//! (`backend/neurocontrol/{protocol,session}.py`, Pydantic v2) and the protobuf
-//! IDL (`ncp.proto`) produce, so the Rust, Python and TypeScript peers are wire
-//! compatible over any transport. In particular:
+//! Every type here serializes to **semantically-equivalent JSON** to what the
+//! Python reference (`backend/neurocontrol/{protocol,session}.py`, Pydantic v2)
+//! and the protobuf IDL (`ncp.proto`) produce, so the Rust, Python and
+//! TypeScript peers are wire compatible over any transport (map key order may
+//! differ between encoders). In particular:
 //!
 //! - enums serialize as their string *values* (`"V_m"`, `"spike_times"`, …),
 //! - every message carries a `kind` discriminator and an `ncp_version`,
 //! - `Option::None` serializes as JSON `null` (Pydantic includes nulls),
-//! - unknown fields are **ignored** on deserialize (forward compatible within a
-//!   major version — consumers ignore unknown fields).
+//! - unknown fields are **ignored** on deserialize. This is forward compatible
+//!   only within a compatible version: while the wire is pre-1.0 (`0.x`) the
+//!   minor is breaking, so [`check_version`] requires an exact `(major, minor)`
+//!   match; once `>=1.0` the major alone gates compatibility.
 //!
 //! Construct messages with `..Default::default()` (or the `new` helpers) so the
 //! `kind`/`ncp_version` defaults are filled in.
@@ -17,7 +20,9 @@
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
-/// Protocol version (semver). Receivers check the **major** only.
+/// Protocol version (semver). While pre-1.0 (`0.x`) receivers check the full
+/// `(major, minor)`; once `>=1.0` they check the **major** only. See
+/// [`check_version`].
 pub const NCP_VERSION: &str = "0.1";
 
 fn ncp_version() -> String {
@@ -156,16 +161,22 @@ pub struct ChannelValue {
 
 impl ChannelValue {
     pub fn scalar(value: f64, unit: Option<&str>) -> Self {
-        Self { data: vec![value], unit: unit.map(str::to_string) }
+        Self {
+            data: vec![value],
+            unit: unit.map(str::to_string),
+        }
     }
     pub fn vec3(x: f64, y: f64, z: f64, unit: Option<&str>) -> Self {
-        Self { data: vec![x, y, z], unit: unit.map(str::to_string) }
+        Self {
+            data: vec![x, y, z],
+            unit: unit.map(str::to_string),
+        }
     }
 }
 
 // ───────────────────────── entity addressing ─────────────────────────
 
-/// A hierarchical client-side entity address, e.g. `crebain/uav3/sensor/cam0`.
+/// A hierarchical client-side entity address, e.g. `uav1/sensor/cam0`.
 #[derive(Serialize, Deserialize, Clone, PartialEq, Debug, Default)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 #[serde(default)]
@@ -188,7 +199,11 @@ pub struct EntityBinding {
 
 impl Default for EntityBinding {
     fn default() -> Self {
-        Self { entity: EntityRef::default(), port: String::new(), direction: "stimulus".into() }
+        Self {
+            entity: EntityRef::default(),
+            port: String::new(),
+            direction: "stimulus".into(),
+        }
     }
 }
 
@@ -224,7 +239,13 @@ pub struct SimConfig {
 
 impl Default for SimConfig {
     fn default() -> Self {
-        Self { dt_ms: 0.1, chunk_ms: 10.0, seed: None, mode: SimMode::Stream, duration_ms: None }
+        Self {
+            dt_ms: 0.1,
+            chunk_ms: 10.0,
+            seed: None,
+            mode: SimMode::Stream,
+            duration_ms: None,
+        }
     }
 }
 
@@ -506,7 +527,11 @@ pub struct CloseSession {
 
 impl Default for CloseSession {
     fn default() -> Self {
-        Self { ncp_version: ncp_version(), kind: "close_session".into(), session_id: String::new() }
+        Self {
+            ncp_version: ncp_version(),
+            kind: "close_session".into(),
+            session_id: String::new(),
+        }
     }
 }
 
@@ -559,7 +584,10 @@ impl Default for ChannelSpec {
     }
 }
 
-/// Bounds the action plane. Only the command path enforces these.
+/// Bounds the action plane. `max_speed_mps`, `geofence_radius_m` and
+/// `command_timeout_ms` are enforced by the action-plane safety governor;
+/// `max_tilt_rad` is advisory metadata and is **not** enforced in this layer
+/// (no command-path clamp consumes it yet).
 #[derive(Serialize, Deserialize, Clone, PartialEq, Debug)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 #[serde(default)]
@@ -759,21 +787,41 @@ impl std::fmt::Display for NcpVersionError {
 }
 impl std::error::Error for NcpVersionError {}
 
-/// Major-compatible? Same major is forward compatible (consumers ignore unknown
-/// fields). On a major mismatch, `Err` when `strict` else `Ok(false)`.
+/// Compatible? For a pre-1.0 wire (major == 0) the protocol has no stability
+/// guarantee yet, so *both* major and minor must match exactly (0.1 ≠ 0.9). For
+/// a stable wire (major >= 1) the major alone decides compatibility (consumers
+/// ignore unknown fields within a major). On a mismatch, `Err` when `strict`
+/// else `Ok(false)`.
 pub fn check_version(version: &str, strict: bool) -> Result<bool, NcpVersionError> {
-    let parse_major = |s: &str| -> Result<u64, NcpVersionError> {
-        s.split('.')
+    let parse_ver = |s: &str| -> Result<(u64, u64), NcpVersionError> {
+        let mut parts = s.split('.');
+        let major = parts
             .next()
             .and_then(|m| m.parse::<u64>().ok())
-            .ok_or_else(|| NcpVersionError(format!("unparseable ncp_version {s:?}")))
+            .ok_or_else(|| NcpVersionError(format!("unparseable ncp_version {s:?}")))?;
+        // Missing minor (e.g. "1") is treated as minor 0.
+        let minor = parts
+            .next()
+            .map(|m| m.parse::<u64>())
+            .transpose()
+            .ok()
+            .flatten()
+            .unwrap_or(0);
+        Ok((major, minor))
     };
-    let got = parse_major(version)?;
-    let want = parse_major(NCP_VERSION)?;
-    if got != want {
+    let (got_major, got_minor) = parse_ver(version)?;
+    let (want_major, want_minor) = parse_ver(NCP_VERSION)?;
+    // Pre-1.0: minor is breaking, so require an exact (major, minor) match.
+    // Stable (>=1.0): major-only compatibility.
+    let compatible = if want_major == 0 {
+        (got_major, got_minor) == (want_major, want_minor)
+    } else {
+        got_major == want_major
+    };
+    if !compatible {
         if strict {
             return Err(NcpVersionError(format!(
-                "NCP major mismatch: got {version}, want {NCP_VERSION}"
+                "NCP version mismatch: got {version}, want {NCP_VERSION}"
             )));
         }
         return Ok(false);
@@ -784,4 +832,73 @@ pub fn check_version(version: &str, strict: bool) -> Result<bool, NcpVersionErro
 /// Read the `kind` discriminator off any NCP JSON (for client reply dispatch).
 pub fn message_kind(json: &serde_json::Value) -> Option<&str> {
     json.get("kind").and_then(|v| v.as_str())
+}
+
+/// The schema-`required` field names for a given message `kind`. This mirrors
+/// the `required` arrays in `ncp/schemas/<kind>.schema.json` (which are derived
+/// from the Pydantic reference); kinds with no required fields return `[]`. An
+/// unknown `kind` returns `None`.
+fn required_fields(kind: &str) -> Option<&'static [&'static str]> {
+    Some(match kind {
+        "capabilities" => &["controller_id"],
+        "close_session" => &["session_id"],
+        "command_frame" => &[],
+        "control_status" => &[],
+        "link_status" => &[],
+        "observation_frame" => &["session_id"],
+        "open_session" => &["session_id", "network"],
+        "run_request" => &["session_id", "duration_ms"],
+        "sensor_frame" => &[],
+        "session_closed" => &["session_id"],
+        "session_opened" => &["session_id"],
+        "step_request" => &["session_id"],
+        "stimulus_frame" => &["session_id"],
+        _ => return None,
+    })
+}
+
+/// Validation failure: either the JSON is structurally unusable, the `kind` is
+/// unknown, or a schema-required field is absent.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ValidationError(pub String);
+
+impl std::fmt::Display for ValidationError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+impl std::error::Error for ValidationError {}
+
+/// Validate raw NCP JSON against the wire contract for its `kind`.
+///
+/// Every message struct is `#[serde(default)]` with no `deny_unknown_fields`, so
+/// a typed `serde_json::from_*` round-trip alone is *not* honest: it silently
+/// fills in defaults for required-but-missing fields (e.g. a `step_request`
+/// with no `session_id` deserializes to an empty session id rather than
+/// failing). This function closes that gap by checking the `kind`'s
+/// schema-`required` array (the same arrays `tests/conformance.rs` reads from
+/// `ncp/schemas/`) **before** trusting the typed value:
+///
+///   - the payload must be a JSON object,
+///   - it must carry a known `kind`,
+///   - every schema-required field for that `kind` must be present.
+///
+/// Unknown extra fields are still accepted (forward compatibility within a
+/// compatible version), so this stays wire-safe.
+pub fn validate(json: &serde_json::Value) -> Result<(), ValidationError> {
+    let obj = json
+        .as_object()
+        .ok_or_else(|| ValidationError("NCP message is not a JSON object".into()))?;
+    let kind = message_kind(json)
+        .ok_or_else(|| ValidationError("NCP message has no string `kind`".into()))?;
+    let required = required_fields(kind)
+        .ok_or_else(|| ValidationError(format!("unknown NCP message kind {kind:?}")))?;
+    for field in required {
+        if !obj.contains_key(*field) {
+            return Err(ValidationError(format!(
+                "{kind}: required field {field:?} is missing"
+            )));
+        }
+    }
+    Ok(())
 }

@@ -11,7 +11,7 @@
 //! ```text
 //!  Zenoh bus  ──(SHM/QoS)──►  ncp-gateway (this)  ──(TCP, newline-JSON)──►  bridge_server.py
 //!     ▲                          {realm}/rpc queryable                       SessionService.handle_json → nest.Run
-//!     └── crebain, pid_vla, dashboards attach as peers / observers
+//!     └── robot/UAV bodies, analysis/observer clients, dashboards attach as peers / observers
 //! ```
 //!
 //! Config via env:
@@ -84,7 +84,9 @@ async fn main() {
         std::process::exit(1);
     }
 
-    println!("[ncp-gateway] serving NCP RPC on Zenoh key '{realm}/rpc' → Python bridge {bridge_addr}");
+    println!(
+        "[ncp-gateway] serving NCP RPC on Zenoh key '{realm}/rpc' → Python bridge {bridge_addr}"
+    );
     println!("[ncp-gateway] observation/sensor/command planes: '{realm}/session/<id>/<plane>'");
     println!("[ncp-gateway] Ctrl-C to stop.");
     let _ = tokio::signal::ctrl_c().await;

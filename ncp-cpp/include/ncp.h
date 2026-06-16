@@ -1,5 +1,5 @@
 /*
- * ncp.h — C / C++ ABI for the Neuro-Control Protocol (NCP) Rust core.
+ * ncp.h — C / C++ ABI for the Neuro-Cybernetic Protocol (NCP) Rust core.
  *
  * So C and C++ projects use the canonical Rust implementation (version guard,
  * key scheme, rate codec, action-plane safety governor, message validation)
@@ -8,9 +8,9 @@
  * built by `cargo build -p ncp-cpp`).
  *
  * Memory: every `char*` return is a heap-allocated UTF-8 C string the caller
- * MUST release with `ncp_string_free`. A NULL return signals malformed input.
- * String arguments are NUL-terminated UTF-8; JSON args/returns match the NCP
- * wire exactly (see ncp.proto / schemas).
+ * MUST release with `ncp_string_free`. A NULL return signals malformed input or
+ * an internal error. String arguments are NUL-terminated UTF-8; JSON args/returns
+ * match the NCP wire exactly (see ncp.proto / schemas).
  */
 #ifndef NCP_H
 #define NCP_H
@@ -40,10 +40,15 @@ char *ncp_key_sensor(const char *realm, const char *session_id);
 char *ncp_key_command(const char *realm, const char *session_id);
 char *ncp_key_observation(const char *realm, const char *session_id);
 
-/* Rate codec. JSON in / JSON out. NULL on malformed input. Caller frees. */
+/* Rate codec. JSON in / JSON out. NULL on malformed input or internal error.
+ * Caller frees. */
 char *ncp_encode_rates(const char *codec_json, const char *sensor_json);
+/* Rate-decode to a CommandFrame. `frame_id` NULL => "world"; `mode` is one of
+ * "init"/"active"/"hold"/"estop" (NULL => "active"); an unknown mode returns
+ * NULL. */
 char *ncp_decode_command(const char *codec_json, const char *rates_json,
-                         double t, int64_t seq);
+                         double t, int64_t seq, const char *frame_id,
+                         const char *mode);
 
 /* Action-plane safety governor. last_sensor_s < 0 => "no sensor yet" (HOLD).
  * NULL on malformed input. Caller frees. */

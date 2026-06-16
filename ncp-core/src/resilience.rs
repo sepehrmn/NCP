@@ -20,6 +20,11 @@ pub struct ActionBuffer {
     latest: Option<CommandFrame>,
     recv_s: f64,
     watchdog: CommandWatchdog,
+    /// Latched ESTOP (mirrors `SafetyGovernor`): once an ESTOP command is ingested
+    /// the buffer fails safe (HOLD) on every subsequent `active()` until a
+    /// supervisor [`reset`]s it — a later non-ESTOP command does NOT clear it.
+    /// A plain HOLD command stays non-latching (it self-clears on the next Active).
+    estop: bool,
 }
 
 impl ActionBuffer {
@@ -31,14 +36,30 @@ impl ActionBuffer {
     pub fn on_command(&mut self, now_s: f64, command: CommandFrame) {
         self.watchdog.on_command(now_s, command.ttl_ms);
         self.recv_s = now_s;
+        if command.mode == Mode::Estop {
+            self.estop = true; // latch
+        }
         self.latest = Some(command);
     }
 
+    /// Clear a latched ESTOP (supervisor authority).
+    pub fn reset(&mut self) {
+        self.estop = false;
+    }
+
+    /// True while ESTOP is latched.
+    pub fn is_estopped(&self) -> bool {
+        self.estop
+    }
+
     /// The setpoint channels to apply at `now_s`, or `None` if the plant must fail
-    /// safe (HOLD): no command, expired `ttl_ms`, an explicit HOLD/ESTOP, or the
-    /// predictive horizon has drained. `channels` is tick 0; `horizon[i]` is tick
-    /// i+1 at `horizon_dt_ms` spacing.
+    /// safe (HOLD): a latched ESTOP, no command, expired `ttl_ms`, an explicit
+    /// HOLD/ESTOP, or the predictive horizon has drained. `channels` is tick 0;
+    /// `horizon[i]` is tick i+1 at `horizon_dt_ms` spacing.
     pub fn active(&self, now_s: f64) -> Option<Map<ChannelValue>> {
+        if self.estop {
+            return None; // latched fail-safe
+        }
         if self.watchdog.should_hold(now_s) {
             return None;
         }
@@ -130,7 +151,7 @@ impl LinkMonitor {
             if seq > e {
                 // Missed e..=seq-1. `missed` is positive (guarded by `seq > e`).
                 let missed = seq - e;
-                self.lost += missed; // exact loss accounting (unbounded count is fine)
+                self.lost = self.lost.saturating_add(missed); // exact unless it would overflow
                 for _ in 0..missed.min(MAX_GAP_OBSERVE) {
                     self.observe(true);
                 }
@@ -138,14 +159,17 @@ impl LinkMonitor {
                 // Out-of-order / duplicate: count as received, no gap.
             }
         }
-        self.received += 1;
+        self.received = self.received.saturating_add(1);
         self.observe(false);
         self.last_seq = seq;
-        self.expected = Some(seq + 1);
+        // CRITICAL: a single peer-reachable frame with seq == i64::MAX would make
+        // `seq + 1` overflow and panic in debug. Saturate so the next-expected
+        // pins at i64::MAX instead of wrapping/panicking.
+        self.expected = Some(seq.saturating_add(1));
     }
 
     pub fn loss_rate(&self) -> f64 {
-        let total = self.received + self.lost;
+        let total = self.received.saturating_add(self.lost);
         if total == 0 {
             0.0
         } else {
@@ -177,7 +201,10 @@ mod tests {
 
     fn vec3(x: f64) -> Map<ChannelValue> {
         let mut m = Map::new();
-        m.insert("velocity_setpoint".into(), ChannelValue::vec3(x, 0.0, 0.0, Some("m/s")));
+        m.insert(
+            "velocity_setpoint".into(),
+            ChannelValue::vec3(x, 0.0, 0.0, Some("m/s")),
+        );
         m
     }
 
@@ -204,7 +231,14 @@ mod tests {
     fn action_buffer_holds_without_command_and_on_estop() {
         let mut buf = ActionBuffer::new();
         assert!(buf.should_hold(0.0), "no command -> HOLD");
-        buf.on_command(0.0, CommandFrame { mode: Mode::Estop, channels: vec3(5.0), ..Default::default() });
+        buf.on_command(
+            0.0,
+            CommandFrame {
+                mode: Mode::Estop,
+                channels: vec3(5.0),
+                ..Default::default()
+            },
+        );
         assert!(buf.should_hold(0.01), "ESTOP -> HOLD");
     }
 
@@ -225,6 +259,104 @@ mod tests {
     }
 
     #[test]
+    fn action_buffer_estop_latches_but_hold_does_not() {
+        let mut buf = ActionBuffer::new();
+        // A normal Active command applies.
+        buf.on_command(
+            0.0,
+            CommandFrame {
+                mode: Mode::Active,
+                channels: vec3(0.5),
+                ..Default::default()
+            },
+        );
+        assert!(buf.active(0.0).is_some(), "Active command applies");
+
+        // A HOLD command suppresses output but does NOT latch.
+        buf.on_command(
+            0.01,
+            CommandFrame {
+                mode: Mode::Hold,
+                channels: vec3(0.5),
+                ..Default::default()
+            },
+        );
+        assert!(buf.should_hold(0.01), "HOLD suppresses");
+        buf.on_command(
+            0.02,
+            CommandFrame {
+                mode: Mode::Active,
+                channels: vec3(0.5),
+                ..Default::default()
+            },
+        );
+        assert!(
+            buf.active(0.02).is_some(),
+            "a HOLD must clear once a fresh Active arrives"
+        );
+
+        // An ESTOP command latches: a later Active command must NOT revive output.
+        buf.on_command(
+            0.03,
+            CommandFrame {
+                mode: Mode::Estop,
+                channels: vec3(0.5),
+                ..Default::default()
+            },
+        );
+        assert!(buf.is_estopped());
+        buf.on_command(
+            0.04,
+            CommandFrame {
+                mode: Mode::Active,
+                channels: vec3(0.9),
+                ..Default::default()
+            },
+        );
+        assert!(
+            buf.should_hold(0.04),
+            "ESTOP latches — a later Active does not revive the actuator"
+        );
+
+        // Supervisor reset clears it.
+        buf.reset();
+        buf.on_command(
+            0.05,
+            CommandFrame {
+                mode: Mode::Active,
+                channels: vec3(0.9),
+                ..Default::default()
+            },
+        );
+        assert!(
+            buf.active(0.05).is_some(),
+            "after reset, Active applies again"
+        );
+    }
+
+    #[test]
+    fn seq_at_i64_max_saturates_without_panic() {
+        // FIX 5: a single peer-reachable frame with seq == i64::MAX must not panic
+        // on the `expected = seq + 1` bookkeeping (debug overflow) — it saturates.
+        let mut m = LinkMonitor::with_defaults("uav1");
+        m.on_seq(0); // expected -> 1
+        m.on_seq(i64::MAX); // gap, and expected -> saturating_add(1) == i64::MAX
+                            // A following frame at i64::MAX is now <= expected (no panic, no spurious gap).
+        m.on_seq(i64::MAX);
+        // loss_rate denominator uses saturating_add too — must stay finite in [0,1].
+        let lr = m.loss_rate();
+        assert!(
+            (0.0..=1.0).contains(&lr),
+            "loss_rate stays in [0,1], got {lr}"
+        );
+        assert_eq!(
+            m.status(0.0).kind,
+            "link_status",
+            "monitor still usable after saturation"
+        );
+    }
+
+    #[test]
     fn huge_seq_jump_is_bounded_but_lost_stays_exact() {
         // A hostile/glitched peer can send a seq billions ahead. The CUSUM
         // bookkeeping must not loop per-missed-seq (that would stall the thread),
@@ -232,7 +364,10 @@ mod tests {
         let mut m = LinkMonitor::new("uav1", 0.05, 5.0);
         m.on_seq(0); // expected -> 1
         m.on_seq(1_000_000_001); // gap = 1_000_000_001 - 1 = 1_000_000_000
-        assert_eq!(m.lost, 1_000_000_000, "lost count stays exact regardless of the loop bound");
+        assert_eq!(
+            m.lost, 1_000_000_000,
+            "lost count stays exact regardless of the loop bound"
+        );
         assert!(m.is_burst(), "a billion-seq gap trips the burst detector");
     }
 }

@@ -27,7 +27,7 @@ case**, not the only case.
 
 `CommandFrame.ttl_ms` is carried on the wire and documented as ≡ DDS LIFESPAN, but
 **no code enforces it** — the `SafetyGovernor` only checks *sensor* staleness
-(`command_timeout_ms`, default 500 ms), and the crebain actuator has no command-age
+(`command_timeout_ms`, default 500 ms), and a typical robot/UAV actuator has no command-age
 check. Every resilience idea below assumes the deadline backstop exists, so
 **enforcing `ttl_ms` plant-side is item 0** (a `CommandWatchdog` primitive now
 ships in `ncp-core::safety` — see below — so the plant can HOLD on an expired or
@@ -71,7 +71,7 @@ exists for K≈1–3 symbols.
 This is where **Partial Information Decomposition** earns its place (see the PID
 section below): drop **redundant** channels, keep **unique** ones, bundle
 **synergistic** ones — a principled "what to send when you can't send everything,"
-designed offline (via pid_vla) and applied online as static channel priorities.
+designed offline (via an information-theoretic analysis client) and applied online as static channel priorities.
 Conflation stays as the wire backstop; a `max_silence_ms` heartbeat distinguishes
 "no change" from "link dead."
 
@@ -82,7 +82,7 @@ separate random loss (poor connection) from a sustained burst (jamming), publish
 as a `LinkStatus` telemetry message. The fail-safe is the point: when `p̂ < p_c` or
 goodput collapses toward `R_min`, escalate **HOLD → ESTOP** (the only two `mode`
 rungs that exist today; an autonomous-RTL rung would need a new `Mode` variant + a
-MAVROS SET_MODE path that crebain does not yet have — out of scope until built).
+MAVROS SET_MODE path that a given robot/UAV client may not yet have — out of scope until built).
 
 **The hard PHY boundary, stated plainly:** no application-layer scheme — not PPC,
 not duplication, not coding — recovers data when a wideband jammer drives delivered
@@ -119,16 +119,17 @@ Shannon information theory.** The two answer different questions:
   information cannot do (MI gives totals, not the unique/redundant/synergistic
   split).
 
-**The elegant part:** pid_vla *already* computes PID on the `(V,L,D,A)` tap of NCP
-(`crates/ncp-observer`). So the loop closes — pid_vla measures the PID structure of
+**The elegant part:** an information-theoretic analysis client (an `ncp-observer`
+crate) *already* computes PID on the `(V,L,D,A)` tap of NCP. So the loop closes —
+the analysis client measures the PID structure of
 {sensor channels → action} **offline**, and feeds back a channel
 priority/drop/replicate policy that the perception codec applies **online**.
-NCP ↔ pid_vla becomes a closed design loop.
+NCP ↔ the analysis client becomes a closed design loop.
 
-**Honest caveats (from pid_vla's own domain):** PID is computationally expensive
+**Honest caveats (from PID's own domain):** PID is computationally expensive
 (the redundancy lattice is super-exponential; estimating it from finite,
 continuous, high-dimensional data is hard — bias, estimator choice, the
-`I_min`-vs-alternatives debate — which is literally pid_vla's research problem). So
+`I_min`-vs-alternatives debate — which is an open research problem). So
 PID is **offline / design-time**, never a per-tick online computation: you run it to
 *set* static channel priorities, then apply those cheaply online. It informs the
 codec; it is not a runtime control primitive.
@@ -138,7 +139,7 @@ codec; it is not a runtime control primitive.
 **Build (high-value, auditable, fits existing fields):** enforce `ttl_ms`
 (shipped: `CommandWatchdog`); PPC horizon capped by `ttl_ms`; seq-gap + CUSUM
 detector + `LinkStatus`; staged fail-safe HOLD→ESTOP gated on `p_c` + goodput
-collapse; PID-informed perception priorities (offline pid_vla → online codec);
+collapse; PID-informed perception priorities (offline analysis client → online codec);
 whole-frame duplication as an adaptive lever.
 
 **Do not build (overkill / redundant / unimplementable on current code):** RS /
@@ -147,8 +148,8 @@ with PPC); event-triggered/send-on-delta sampling (fights the existing DROP+conf
 + rate-codec design); layered/scalable coding (no maps/trajectories on the bus);
 deep-RL / game-theoretic anti-jam (its levers are PHY, not NCP); an autonomous-RTL
 mode rung (needs MAVROS SET_MODE wiring that doesn't exist); using `H`/anytime as
-redundancy-sizing formulas (rigor-theater for this payload); the KF/EKF/UKF in
-crebain is **not** wired into the NCP path, so don't predicate AoII on it.
+redundancy-sizing formulas (rigor-theater for this payload); a client's own
+KF/EKF/UKF state estimator is **not** wired into the NCP path, so don't predicate AoII on it.
 
 **The bottom line the theory insists on:** these are *feasibility and fail-safe*
 criteria — not a stability certificate for the SNN controller, whose effective
@@ -164,7 +165,7 @@ important thing NCP can do is detect goodput collapse and fail safe honestly.
 2. **seq-gap + CUSUM detector + `LinkStatus`** telemetry.
 3. **Staged SafetyGovernor**: HOLD→ESTOP on `p̂<p_c` / goodput collapse (no RTL rung
    until the `Mode` variant + MAVROS path exist).
-4. **PID-informed perception priorities** (offline via pid_vla) + optional adaptive
+4. **PID-informed perception priorities** (offline via an analysis client) + optional adaptive
    duplication.
 
 No new dependencies, no wire-breaking edits — additive `Option`/`Vec` fields and
