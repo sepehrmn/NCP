@@ -97,3 +97,120 @@ long runs (the `NestSession` path slices a growing events array — O(history) p
 step). Pick `chunk_ms` for your latency/throughput point as you would a MUSIC tick.
 Per-exchange latency is network-bound, above MPI shared memory. See
 [`RATIONALE.md`](RATIONALE.md) §MUSIC for the full comparison.
+
+---
+
+## Real-time factor & sizing (measured)
+
+§7 above says neither MUSIC nor NCP *guarantees* real time — that the network
+size sets whether NEST keeps up with wall-clock. This section turns that into
+numbers. The *real-time factor* `rt = bio_time / wall_time`: `rt >= 1.0` means the
+kernel integrates faster than real time (the precondition for a live loop);
+`rt < 1.0` means the loop lags and is only usable offline.
+
+**The binding constraint is the real-time factor, not the chunk size.**
+`chunk_ms` sets control-loop *latency* and is cheap to shrink — but it cannot make
+a network that integrates at 0.3x real time keep up. Only fewer neurons, fewer
+synapses-per-neuron, more threads, or MPI scale-out move the real-time factor.
+(Shrinking the chunk while compute-bound makes it *worse* — per-`Run()` overhead
+grows; see [`PERFORMANCE.md`](PERFORMANCE.md).)
+
+### Method
+
+Brunel-style balanced random network (the NEST standard scaling benchmark):
+`iaf_psc_alpha`, 0.8N excitatory / 0.2N inhibitory, **fixed indegree** held
+constant across N (`fixed_indegree`, CE=400 from E + CI=100 from I ⇒ ~500
+recurrent synapses/neuron), inhibition-dominated (g=5), per-neuron Poisson drive
+tuned for an async-irregular **~13 Hz** regime. Readback is a `spike_recorder` on
+a 1000-neuron readout subset only (mimics an NCP `RecordSpec`; recording overhead
+is negligible, so these are raw integrate + spike-delivery numbers). Build is
+**outside** the timer; only `nest.Simulate(T_bio)` is timed; one untimed warmup,
+then up to 3 timed reps with the **MIN wall** reported. NEST 3.8.0, OpenMP-only,
+single MPI rank, 16 physical cores, 128 GB RAM. Reproduce with
+[`scripts/bench_realtime.py`](scripts/bench_realtime.py).
+
+### Real-time factor vs network size and threads
+
+`rt` (bio-s per wall-s); **bold** = real time or faster.
+
+| N (neurons) | ~synapses | T=1 | T=2 | T=4 | T=8 | T=16 |
+|---|---|---|---|---|---|---|
+| 10 000 | 5.0 M | 0.32 | 0.63 | **1.18** | **2.01** | **2.13** |
+| 50 000 | 25 M | 0.033 | 0.063 | 0.14 | 0.30 | 0.35 |
+| 100 000 | 50 M | 0.014 | 0.032 | 0.066 | 0.13 | 0.17 |
+| 200 000 | 100 M | 0.0065 | 0.013 | 0.027 | 0.054 | 0.071 |
+
+(N=200000 used T_bio=500 ms; `rt` scaled to its own bio time. N=100000 T=1 and
+N=200000 T=1 ran a single timed rep, having exceeded a 60 s/rep skip threshold.)
+
+### The real-time frontier — largest live-controllable network
+
+* **Real time (>=1x) is reached ONLY at N=10000, and only at >=4 threads.** Within
+  N=10000 the crossing sits between T=2 (0.63x) and T=4 (1.18x): ~3–4 threads are
+  needed to drive a 10k-neuron / 5M-synapse net at ~13 Hz in real time.
+* **No N>=50000 config reaches real time on 16 cores.** The closest is N=50000 at
+  T=16 = 0.35x (~2.85x slower than real time).
+* **Practical live ceiling at 16 threads / ~13 Hz / ~500 syn/neuron: ~10k–20k
+  neurons (~5–10M synapses).** The ~17k–20k crossing at T=16 is an *interpolation*
+  (the sweep did not sample between 10k and 50k), not a measured point.
+
+Because indegree is fixed, total synapses and per-step compute scale ~linearly
+with N — which is why `rt` degrades roughly linearly with N at fixed threads.
+Firing stayed 12.3–13.5 Hz across every (N,T) cell, confirming the regime is
+N-invariant.
+
+### Thread-scaling efficiency
+
+Efficiency = speedup(T) / T relative to the same-N T=1 baseline.
+
+| N | T=2 | T=4 | T=8 | T=16 |
+|---|---|---|---|---|
+| 50 000 | 1.89x (0.95) | 4.09x (**1.02**) | 8.98x (**1.12**) | 10.51x (0.66) |
+| 10 000 | 1.94x (0.97) | 3.64x (0.91) | 6.22x (0.78) | 6.60x (0.41) |
+
+* **Super-linear speedup at T=4/T=8 is real and reproducible** (efficiency >100%):
+  at 16 physical cores the per-thread neuron/synapse slice shrinks enough to fit
+  cache better, so adding threads more than proportionally helps up to ~8.
+* **Efficiency collapses at T=16** (0.66 on the 50k net, 0.41 on the 10k net): all
+  physical cores saturate, and memory-bandwidth + spike-delivery/event-buffer
+  synchronization dominate. 16 threads still cuts absolute wall time, but with
+  ~65–70% efficiency on big nets and worse on small ones. **Do not extrapolate
+  linear scaling past 8 threads.** Best parallel efficiency lives in the 4–8 thread
+  band; the small 10k net saturates earliest (too little work per thread to amortize
+  16-way overhead).
+
+### What was NOT the limiter
+
+* **Memory:** RSS peaked ~5 GB at N=200000 / 100M synapses, far under 128 GB.
+* **Build time** was the *emerging* limiter at large N (not RAM): build grew
+  0.34 s (5M syn) → 7.2 s (50M) → 14.9 s (100M) at T=1, ~linear in synapse count.
+  It is outside the timer, but at N=200000 the one-time build is a real fraction of
+  any short run.
+* **Compute/wall time** was the binding constraint for real time.
+
+### Concrete guidance
+
+1. **Pick threads in the 4–8 band first.** That is where efficiency is highest
+   (often >=100%). Going to all 16 cores helps absolute wall time but with
+   diminishing returns; it is not free headroom.
+2. **Size the brain to the budget.** For a >=1x live loop on 16 cores at ~13 Hz with
+   ~500 syn/neuron, stay at <=~10k–20k neurons / <=~5–10M synapses. A bigger live
+   brain needs MPI scale-out, lower indegree, or accepting sub-real-time.
+3. **Accept non-real-time for offline.** If the science needs 50k+ neurons and the
+   loop need not be live, `rt < 1` is fine — just do not advertise the session as
+   real time (the roadmap's open-session budget check makes this honest, not silent).
+4. **Shrink the chunk for latency, not for throughput.** `chunk_ms` trades latency
+   against per-`Run()` overhead; it does not change the real-time factor.
+
+### Caveats
+
+* Numbers are specific to **NEST 3.8.0 (OpenMP-only, single MPI rank, 16 cores)**,
+  this connectivity (~500 recurrent syn/neuron via fixed indegree), and this firing
+  regime (~13 Hz async-irregular). CLAUDE.md pins NESTML 8.2.0 → NEST 3.9 as the
+  target; numbers may shift slightly on 3.9.
+* The ~17k–20k live ceiling at T=16 is interpolated (no sample between 10k and 50k).
+* `fire_hz` is reported from the first-rep event count, not the min-wall rep
+  (harmless — the rate is N/T-invariant by design).
+* Independently re-verified at the representative N=50000 cell (T=1 ~32 s/s vs 30
+  reported, T=8 ~3.74 vs 3.34 — within ~7–12%, no trend reversal); the rest of the
+  grid is a faithful transcription of the recorded run.

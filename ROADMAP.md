@@ -156,6 +156,69 @@ negotiation or the safety governor.
 
 ---
 
+## P2 — Real-time honesty & sizing (measured)
+
+A benchmark sweep on NEST 3.8.0 (16 cores) put numbers on §7 of
+[`NEST_REALTIME.md`](NEST_REALTIME.md): for a Brunel-style net at ~500
+syn/neuron and ~13 Hz, **>=1x real time is reached only at N=10000 and only at
+>=4 threads** (T=8 = 2.01x); no N>=50000 config reaches real time on 16 cores
+(best N=50000 T=16 = 0.35x). A live NCP session that exceeds that budget will
+silently lag wall-clock. These items make the lag honest and give the principled
+mitigations. Full numbers + method in [`NEST_REALTIME.md`](NEST_REALTIME.md) and
+[`PERFORMANCE.md`](PERFORMANCE.md); reproduce with `scripts/bench_realtime.py` and
+`scripts/bench_overlap.py`.
+
+- **`open_session` real-time-budget check + telemetry.** At session open, given the
+  network size, `sim.chunk_ms`, and the requested control rate, estimate the
+  real-time factor (or measure it from a short untimed warmup, as the benchmark
+  does) and **warn / refuse-as-non-realtime** when the loop cannot keep up — then
+  surface the achieved real-time factor and per-chunk wall time in `ControlStatus`
+  telemetry. *Why:* the sweep shows the binding constraint is the real-time factor
+  (compute vs wall), **not** the chunk size — shrinking `chunk_ms` buys latency, not
+  throughput, and while compute-bound makes it worse (per-`Run()` overhead climbs).
+  A session should **fail honest** (declared offline / sub-real-time) rather than
+  advertise a live loop it cannot sustain. This also fits the provenance-first
+  posture: a real-time claim becomes a checked discriminator, not an assumption.
+
+- **Keep transport off the NEST compute path (GIL-grounded).** A decisive GIL test
+  showed **`nest.Run()` holds the Python GIL for its full duration** (a background
+  thread retained ~0% of baseline during Run), so in-process Python threading
+  delivered **~1.0x overlap** even when transport I/O matched per-chunk compute.
+  Document and enforce that the per-tick transport (CommandFrame/SensorFrame
+  serialization + Zenoh RTT) lives in the **Rust gateway / a separate process**,
+  whose OS threads run outside the GIL and can ship chunk N-1 / buffer chunk N+1
+  while the NEST process computes chunk N. *Why:* this is the only configuration in
+  which transport I/O actually overlaps compute; the streaming control plane already
+  bypasses the gateway's per-request RPC, and this codifies *why* the NEST kernel and
+  the transport stack must not share an interpreter.
+
+- **`CommandFrame.horizon` + `ttl_ms` HOLD as the principled real-time mitigation.**
+  When the real-time budget cannot be met (or the link drops), the actuator replays
+  the predictive `horizon` setpoints — each entry expiring at its own
+  `t + i·horizon_dt_ms`, capped by `ttl_ms`, then **HOLD fires** (the `ActionBuffer`
+  / `CommandWatchdog` in `ncp-core::safety`; see [`RESILIENCE.md`](RESILIENCE.md)).
+  *Why:* this is exactly the lever for the sub-real-time / lagging-loop regime the
+  sweep exposes — predictive lookahead buys `N · horizon_dt_ms` of ride-through, and
+  a bounded HOLD is the honest fail-safe when the brain cannot keep pace, rather than
+  pretending a stale command is current.
+
+- **Distributed / MPI-NEST as the path to bigger live brains.** The sweep was
+  OpenMP-only, single MPI rank; memory was never the limiter (~5 GB at 100M
+  synapses) — **compute/wall time was**, and it degrades ~linearly with synapse
+  count. *Why:* the only way to push the ~10k–20k-neuron live ceiling materially
+  higher is MPI scale-out across ranks/nodes (or lower indegree). NCP serving a
+  multi-rank NEST kernel is the natural growth path; document it as the route to
+  larger real-time brains rather than implying single-node scales indefinitely.
+
+- **Sensible default `local_num_threads`.** Default the NEST backend toward the
+  **4–8 thread band**, not 1 and not blindly 16. *Why:* efficiency peaked there
+  (super-linear, cache-driven — N=50000 T=8 efficiency ~1.12) and collapsed to ~0.66
+  at T=16; 1 thread leaves >6x on the table and all-16 wastes ~30–35% to
+  memory-bandwidth/synchronization contention. A measured default beats an arbitrary
+  one. (Expose it; do not hard-code — the right value is hardware-dependent.)
+
+---
+
 ## Honest positioning
 
 NCP's closed-loop spiking-neural / NEST-in-the-loop story is **not** a new control

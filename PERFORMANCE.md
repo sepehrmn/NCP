@@ -78,6 +78,61 @@ network/IPC transport (slightly higher, but ≪ the control-rate budget — see
 fleet reach. NCP does **not** claim to beat MPI on raw latency; it competes on
 portability, safety, provenance and observability.
 
+## Measured: chunk overhead, scaling, and I/O overlap (NEST 3.8.0, 16 cores)
+
+The cost model above predicts `T_ncp` is small and `T_run` dominates. Three
+benchmarks confirm it and bound where NCP's design choices actually matter.
+Reproduce with [`scripts/bench_realtime.py`](scripts/bench_realtime.py) and
+[`scripts/bench_overlap.py`](scripts/bench_overlap.py); full sizing table in
+[`NEST_REALTIME.md`](NEST_REALTIME.md).
+
+### Per-chunk readback overhead — already ~free
+
+The earlier readback fix (above) made per-step readback **O(1)** for rate and
+**O(new events)** for spikes/V_m. The real-time sweep recorded from a 1000-neuron
+readout subset (an NCP `RecordSpec`) and saw recording overhead stay negligible —
+the measured numbers are raw integrate + spike-delivery throughput, not dominated
+by readback. The control-observable path is not the bottleneck; `T_run` is.
+
+### Scaling: the binding constraint is the real-time factor
+
+A Brunel-style balanced net (~500 syn/neuron, ~13 Hz async-irregular) reaches
+**>=1x real time only at N=10000 and only at >=4 threads** (T=4 1.18x, T=8 2.01x,
+T=16 2.13x). No N>=50000 config reaches real time on 16 cores (best N=50000 T=16 =
+0.35x). Since indegree is fixed, synapses and per-step compute scale ~linearly with
+N, so `rt` degrades ~linearly with N. Thread efficiency peaks in the **4–8 band**
+(super-linear, cache-driven: N=50000 T=8 efficiency ~1.12) and collapses to ~0.66
+at T=16 — 16 threads still helps absolute wall time but with diminishing returns.
+**Practical live ceiling at 16 threads / ~13 Hz / ~500 syn/neuron: ~10k–20k
+neurons.** Implication for `chunk_ms`: shrinking it buys latency, not throughput,
+and while compute-bound it makes things *worse* (per-`Run()` overhead climbs — at a
+10 ms chunk on a 50k net, ~10 ms of bio time cost ~38–65 ms of compute). If real
+time at large N is the goal, the lever is **fewer-but-larger chunks / more threads /
+a smaller net**, not a smaller chunk.
+
+### I/O overlap: in-process Python threading CANNOT overlap transport with compute
+
+A decisive GIL test settles where transport must live: a background spinner thread
+retained only **~0.4–1.3% of its standalone counting rate during a real
+`nest.Run()`** (a released GIL would keep >50%). **`nest.Run()` holds the Python
+GIL for its full duration** (`gil_released=false`). Consequence, measured: a
+`ThreadPoolExecutor` "overlap" loop delivered **0.92–1.10x speedup across all cases
+— i.e. noise** — even when modeled transport I/O (5 ms) was comparable to per-chunk
+compute (~4.5 ms), because the background thread cannot serialize while `Run` owns
+the GIL. Overlap only pays off when per-chunk I/O is comparable-to-greater-than
+per-chunk compute **AND** transport runs outside the GIL; in-process threading fails
+the second condition. **Therefore transport must not live in the NEST interpreter:
+put it in the Rust NCP gateway ([`ncp-gateway`](ncp-gateway) / [`ncp-zenoh`](ncp-zenoh)),
+whose OS threads run fully outside the GIL** and can ship chunk N-1 / buffer chunk
+N+1 while the NEST process computes chunk N. For compute-bound heavy nets, overlap
+is pointless regardless (best honest case stayed at a ~55 ms period at chunk_ms=10).
+
+(Overlap caveat: the original `bench_overlap.py` prototype was deleted after the
+first run and reconstructed; the reconstruction reproduces the qualitative verdicts
+— GIL held, threaded overlap ~1.0x — but absolute per-chunk-compute magnitudes
+differ by >2x because the exact original Poisson drive was unknown. The load-bearing
+finding, not the absolute periods, is what reproduces.)
+
 ## What to measure on your hardware
 
 1. `T_run` for your network at your `chunk_ms` — this sets the feasible rate.
