@@ -223,14 +223,16 @@ aspirational — the only shipped transport is `ncp-zenoh`; Zenoh is native and 
 not compile to browser WASM (TS gets *types* via ts-rs, but the browser transport
 is BYO WebSocket); DDS's safety-pedigreed QoS is an unexercised alternative.
 
-**5. Language & runtime interop (Rust ↔ Python ↔ TS).** *Advantage:* two
+**5. Language & runtime interop (Rust ↔ Python ↔ TS ↔ C++).** *Advantage:* two
 complementary sources of truth — `ncp.proto` owns the *wire* (any peer
 interoperates with zero Rust), `ncp-core` owns the *behavior* (codec, safety,
-keys, version), reaching Python via PyO3 (verified: the `ncp` module imports and
-runs) so the high-consequence safety/codec logic is not reimplemented three times.
-*Disadvantage:* FFI glue is irreducible; PyO3 friction with Rust enums/generics
-constrains the public API to FFI-friendly tagged structs; TS relies on *generated
-types + a hand-kept transport*, so TS is the least-unified peer.
+keys, version), reaching Python via PyO3 and C/C++ via a C ABI (`ncp-cpp` +
+`ncp.h`) — both verified by importing/linking and running — so the
+high-consequence safety/codec logic is written once, not reimplemented per
+language. *Disadvantage:* FFI glue is irreducible; PyO3/C-ABI friction with Rust
+enums/generics constrains the public surface to FFI-friendly tagged structs and
+JSON-string in/out; TS relies on *generated types + a hand-kept transport* (Zenoh
+is native, no browser WASM), so TS is the least-unified peer.
 
 **6. Safety & control authority.** *Advantage:* the action plane has an explicit
 `mode` (init/active/hold/estop) the controller asserts on the wire, with the

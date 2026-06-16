@@ -11,11 +11,16 @@ rust-version.workspace = true
 ncp-core = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-# Latest stable Zenoh. Core pub/sub/query only — default features pull a heavy
-# plugin chain we don't need. Cargo feature-unification is additive, so a host
-# (e.g. crebain, which enables zenoh's default features) still gets them in its
-# own build, and the version unifies to crebain's 1.9 pin.
-zenoh = { version = "1.9", default-features = false }
+# Latest stable Zenoh. Default features pull a heavy plugin chain we don't need;
+# instead enable exactly the transport links NCP uses — TCP/UDP plus same-host
+# shared-memory (the zero-copy perception path). Cargo feature-unification is
+# additive, so a host (e.g. crebain, which enables zenoh's default features) still
+# gets the full set, unified to its 1.9 pin.
+zenoh = { version = "1.9", default-features = false, features = [
+    "transport_tcp",
+    "transport_udp",
+    "shared-memory",
+] }
 tokio = { version = "1", features = ["rt-multi-thread", "sync", "macros"] }
 
 [features]

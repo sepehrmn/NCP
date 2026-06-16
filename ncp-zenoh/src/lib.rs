@@ -76,6 +76,9 @@ fn err<E: std::fmt::Display>(ctx: &str) -> impl Fn(E) -> ZenohError + '_ {
 pub struct ZenohBus {
     session: Arc<Session>,
     keys: Keys,
+    // Retain subscriber handles for the session lifetime — a dropped Zenoh
+    // Subscriber undeclares its subscription, so callbacks would stop firing.
+    subs: Arc<std::sync::Mutex<Vec<zenoh::pubsub::Subscriber<()>>>>,
 }
 
 impl ZenohBus {
@@ -92,13 +95,17 @@ impl ZenohBus {
     /// Open with an explicit config and realm.
     pub async fn with_config(config: Config, keys: Keys) -> Result<Self> {
         let session = zenoh::open(config).await.map_err(err("zenoh open"))?;
-        Ok(Self { session: Arc::new(session), keys })
+        Ok(Self {
+            session: Arc::new(session),
+            keys,
+            subs: Arc::new(std::sync::Mutex::new(Vec::new())),
+        })
     }
 
     /// Wrap an already-open session (so a host app, e.g. crebain, can share one
     /// Zenoh session across ROS traffic and NCP).
     pub fn from_session(session: Arc<Session>, keys: Keys) -> Self {
-        Self { session, keys }
+        Self { session, keys, subs: Arc::new(std::sync::Mutex::new(Vec::new())) }
     }
 
     pub fn keys(&self) -> &Keys {
@@ -221,7 +228,8 @@ impl ZenohBus {
         F: Fn(String, Vec<u8>) + Send + Sync + 'static,
     {
         let callback = Arc::new(callback);
-        self.session
+        let sub = self
+            .session
             .declare_subscriber(key.to_string())
             .callback(move |sample| {
                 let key = sample.key_expr().as_str().to_string();
@@ -230,12 +238,59 @@ impl ZenohBus {
             })
             .await
             .map_err(err("declare subscriber"))?;
+        // Keep the handle alive (dropping it undeclares the subscription).
+        self.subs.lock().unwrap().push(sub);
         Ok(())
     }
 
     pub fn close(&self) {
         // Best-effort; the session closes when the last Arc is dropped.
         let _ = self.session.clone();
+    }
+}
+
+/// A [`ncp_core::ControlTransport`] backed by Zenoh — the **controller side** of
+/// the streaming closed loop. It subscribes to the perception plane
+/// (`…/session/{id}/sensor`), keeping the latest `SensorFrame`, and publishes
+/// `CommandFrame`s to the safety-gated action plane (`…/command`). Drop it into a
+/// `ncp_core::NeuroControlLoop` to run a spiking or reflex controller over Zenoh
+/// **streaming** — no per-tick RPC round trip. Construct within a tokio runtime.
+pub struct ZenohControlTransport {
+    bus: ZenohBus,
+    session_id: String,
+    latest: Arc<std::sync::Mutex<Option<ncp_core::SensorFrame>>>,
+    handle: tokio::runtime::Handle,
+}
+
+impl ZenohControlTransport {
+    pub async fn new(bus: ZenohBus, session_id: impl Into<String>) -> Result<Self> {
+        let session_id = session_id.into();
+        let latest: Arc<std::sync::Mutex<Option<ncp_core::SensorFrame>>> =
+            Arc::new(std::sync::Mutex::new(None));
+        let sink = latest.clone();
+        bus.subscribe_sensors(&session_id, move |_key, bytes| {
+            if let Ok(sf) = serde_json::from_slice::<ncp_core::SensorFrame>(&bytes) {
+                *sink.lock().unwrap() = Some(sf);
+            }
+        })
+        .await?;
+        Ok(Self { bus, session_id, latest, handle: tokio::runtime::Handle::current() })
+    }
+}
+
+impl ncp_core::ControlTransport for ZenohControlTransport {
+    fn send_command(&self, command: &ncp_core::CommandFrame) {
+        let Ok(bytes) = serde_json::to_vec(command) else { return };
+        let bus = self.bus.clone();
+        let session_id = self.session_id.clone();
+        // Fire-and-forget put on the action plane (express + DROP + RealTime QoS).
+        self.handle.spawn(async move {
+            let _ = bus.publish_command(&session_id, &bytes).await;
+        });
+    }
+
+    fn latest_sensor(&self) -> Option<ncp_core::SensorFrame> {
+        self.latest.lock().unwrap().clone()
     }
 }
 

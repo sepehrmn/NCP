@@ -30,11 +30,12 @@ interoperate over any transport.
 | **`ncp-zenoh`** | The recommended **decoupled** transport: Zenoh *queryable* (control-plane RPC) + *pub/sub* (perception/action/observation data planes), each with the QoS its job needs (see [`Plane`]). |
 | **`ncp-gateway`** | **Engram's Rust edge**: runs the Zenoh bus and bridges control-plane RPC to the Python `SessionService` over a localhost socket (NEST stays Python). |
 | **`ncp-python`** | **Python binding** (PyO3): the Rust core (version guard, key scheme, codec, safety, message validation) as an importable `ncp` module — so Python peers are wire-identical without reimplementing. |
+| **`ncp-cpp`** | **C / C++ binding**: a stable C ABI (`extern "C"` + `include/ncp.h`) over the same core, so C and C++ projects link `ncp_cpp` instead of reimplementing the wire. |
 
-## One Rust core, three languages
+## One Rust core, four languages
 
-NCP is written in Rust and **works from Python and TypeScript** off the *same*
-core, so every peer is wire-identical:
+NCP is written in Rust and **works from Python, TypeScript and C++** off the
+*same* core, so every peer is wire-identical:
 
 - **Rust** — depend on `ncp-core` (+ `ncp-zenoh`) directly.
 - **Python** — `import ncp` (the `ncp-python` PyO3 extension): `ncp.Keys`,
@@ -44,6 +45,13 @@ core, so every peer is wire-identical:
   from the Rust types** by ts-rs (`cargo test -p ncp-core --features ts`); import
   them and keep your transport (WebSocket / Tauri-Zenoh) in TS. (Zenoh is native,
   so the *transport* doesn't compile to browser WASM; the *types* come from Rust.)
+- **C / C++** — include `ncp-cpp/include/ncp.h` and link `ncp_cpp`
+  (`cargo build -p ncp-cpp`); see `ncp-cpp/examples/demo.cpp`.
+
+Integrating a new project is meant to be simple and minimally invasive — see
+[`INTEGRATING.md`](INTEGRATING.md) (per-language quickstart + a 10-adopter-lens
+evaluation). Whether NCP can read NEST in real time without stopping the
+simulation (like MUSIC): [`NEST_REALTIME.md`](NEST_REALTIME.md).
 
 ## The three planes
 
@@ -124,9 +132,13 @@ that needs no code edits (the crate is self-contained).
 ## Build & test
 
 ```bash
+scripts/check.sh             # full conformance/smoke matrix (all crates + bindings)
+
 cargo test -p ncp-core       # pure, fast (serde only) — wire-compat + codec + safety + loop
-cargo build -p ncp-zenoh     # pulls Zenoh
+cargo test -p ncp-core --features ts          # (re)generate the TypeScript types
+cargo test -p ncp-zenoh --test loopback       # real Zenoh runtime: streaming control loop
 cargo build -p ncp-gateway   # the Engram edge binary
+cargo build -p ncp-cpp       # the C/C++ ABI (+ ncp-cpp/include/ncp.h)
 ```
 
 ## Scientific boundary (binding)

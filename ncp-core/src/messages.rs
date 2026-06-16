@@ -468,6 +468,10 @@ pub struct ObservationFrame {
     pub ncp_version: String,
     pub kind: String,
     pub session_id: String,
+    /// Echoes the driving `SensorFrame.seq` when published inside a closed loop,
+    /// so a split-plane observer can align `(V,L,D,A)` on `seq` (not arrival
+    /// time). `0` in the pure pull/sim-service path (no controller seq).
+    pub seq: i64,
     pub t: f64,
     pub sim_time_ms: f64,
     pub records: Map<Observation>,
@@ -481,6 +485,7 @@ impl Default for ObservationFrame {
             ncp_version: ncp_version(),
             kind: "observation_frame".into(),
             session_id: String::new(),
+            seq: 0,
             t: 0.0,
             sim_time_ms: 0.0,
             records: Map::new(),

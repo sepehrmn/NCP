@@ -22,7 +22,7 @@
 
 [workspace]
 resolver = "2"
-members = ["ncp-core", "ncp-zenoh", "ncp-gateway", "ncp-python"]
+members = ["ncp-core", "ncp-zenoh", "ncp-gateway", "ncp-python", "ncp-cpp"]
 
 [workspace.package]
 version = "0.1.0"

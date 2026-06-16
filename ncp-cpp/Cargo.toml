@@ -1,0 +1,17 @@
+[package]
+name = "ncp-cpp"
+description = "C ABI for the NCP Rust core — so C and C++ projects use the canonical implementation (version guard, key scheme, rate codec, safety governor, message validation) via a stable `extern \"C\"` interface and the ncp.h header."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[lib]
+name = "ncp_cpp"
+# staticlib (link into a C++ binary) + cdylib (dlopen / -lncp_cpp).
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[dependencies]
+ncp-core = { workspace = true }
+serde_json = { workspace = true }

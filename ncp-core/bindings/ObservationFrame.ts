@@ -4,4 +4,10 @@ import type { Observation } from "./Observation";
 /**
  * The returned neural data, keyed by record port.
  */
-export type ObservationFrame = { ncp_version: string, kind: string, session_id: string, t: number, sim_time_ms: number, records: { [key in string]: Observation }, calibrated_posterior: boolean, is_simulation_output: boolean, };
+export type ObservationFrame = { ncp_version: string, kind: string, session_id: string, 
+/**
+ * Echoes the driving `SensorFrame.seq` when published inside a closed loop,
+ * so a split-plane observer can align `(V,L,D,A)` on `seq` (not arrival
+ * time). `0` in the pure pull/sim-service path (no controller seq).
+ */
+seq: bigint, t: number, sim_time_ms: number, records: { [key in string]: Observation }, calibrated_posterior: boolean, is_simulation_output: boolean, };
