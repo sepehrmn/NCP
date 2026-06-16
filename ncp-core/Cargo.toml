@@ -1,0 +1,20 @@
+[package]
+name = "ncp-core"
+description = "Neuro-Control Protocol (NCP) — pure protocol core: wire types, version guard, key scheme, rate codec, safety governor, in-process bus. The normative Rust reference."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+# TypeScript type generation (Rust is the single source of truth for TS types).
+# `cargo test --features ts` writes ncp-core/bindings/*.ts. Off by default.
+# serde-compat so ts-rs honours the existing `#[serde(rename)]` (e.g. "V_m", "ref").
+ts-rs = { version = "12", features = ["serde-compat"], optional = true }
+
+[features]
+default = []
+ts = ["dep:ts-rs"]
