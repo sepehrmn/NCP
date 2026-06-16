@@ -1,0 +1,131 @@
+//! # ncp-core — Neuro-Control Protocol (NCP), Rust reference
+//!
+//! NCP is a versioned, transport-agnostic, project-agnostic standard for letting
+//! an Engram-driven NEST simulation serve external robot / UAV / simulation
+//! systems — for **perception, action, both, or neither**. This crate is the
+//! normative Rust core: the wire types, the version guard, the key scheme, a
+//! reference rate codec, the action-plane safety governor, and an in-process bus
+//! and control loop. The Zenoh transport is in `ncp-zenoh`.
+//!
+//! Scientific boundary (binding): returned `V_m`/spikes are **raw simulation
+//! outputs of a specified model**, never a validated reproduction. Every
+//! [`ObservationFrame`] carries `calibrated_posterior=false` and
+//! `is_simulation_output=true`. A neuro-controller is a control artifact, never a
+//! paper-reproduction claim.
+//!
+//! The wire types serialize to exactly the JSON the Python reference and the
+//! protobuf IDL produce, so Rust, Python and TypeScript peers interoperate.
+//!
+//! ```
+//! use ncp_core::{OpenSession, NetworkRef, NetworkRefKind, RecordSpec, RecordTarget, Observable};
+//! let open = OpenSession {
+//!     session_id: "uav3-percept".into(),
+//!     network: NetworkRef {
+//!         kind: NetworkRefKind::Builtin,
+//!         ref_: "iaf_psc_alpha".into(),
+//!         population_sizes: [("feat".to_string(), 1)].into_iter().collect(),
+//!         ..Default::default()
+//!     },
+//!     record: RecordSpec { targets: vec![RecordTarget {
+//!         port: "spk".into(), target: "feat".into(), observable: Observable::Spikes, ..Default::default()
+//!     }] },
+//!     ..Default::default()
+//! };
+//! let json = serde_json::to_string(&open).unwrap();
+//! assert!(json.contains("\"kind\":\"open_session\""));
+//! ```
+
+pub mod bus;
+pub mod codec;
+pub mod keys;
+pub mod messages;
+pub mod safety;
+pub mod transport;
+
+pub use bus::{Bus, BusError, LocalBus, NcpBusClient, NcpBusServer, QueryHandler, SubCallback};
+pub use codec::{CodecSpec, DecoderChannelMap, EncoderChannelMap, default_uav_velocity_codec};
+pub use keys::{Keys, DEFAULT_REALM};
+pub use messages::*;
+pub use safety::SafetyGovernor;
+pub use transport::{
+    ControlTransport, Controller, InProcessTransport, NeuroControlLoop, ReflexController,
+};
+
+#[cfg(test)]
+mod wire_tests {
+    use super::*;
+
+    /// The `kind` discriminator and enum string values must match the Python
+    /// reference exactly so peers interoperate.
+    #[test]
+    fn enum_wire_values() {
+        assert_eq!(serde_json::to_string(&Observable::Vm).unwrap(), "\"V_m\"");
+        assert_eq!(serde_json::to_string(&Observable::Spikes).unwrap(), "\"spikes\"");
+        assert_eq!(serde_json::to_string(&StimulusKind::CurrentPa).unwrap(), "\"current_pA\"");
+        assert_eq!(serde_json::to_string(&StimulusKind::SpikeTimes).unwrap(), "\"spike_times\"");
+        assert_eq!(serde_json::to_string(&NetworkRefKind::ModelId).unwrap(), "\"model_id\"");
+        assert_eq!(serde_json::to_string(&Mode::Estop).unwrap(), "\"estop\"");
+    }
+
+    /// A step request from a TS/Python client must round-trip through the Rust
+    /// types (forward-compatible: unknown fields ignored).
+    #[test]
+    fn step_request_roundtrip_from_python_json() {
+        let json = r#"{
+            "ncp_version": "0.1",
+            "kind": "step_request",
+            "session_id": "s1",
+            "advance_ms": 50.0,
+            "stimulus": {"kind":"stimulus_frame","session_id":"s1","values":{
+                "drive": {"data":[500.0],"unit":"pA"}
+            }},
+            "future_field_we_do_not_know": 7
+        }"#;
+        let req: StepRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(req.session_id, "s1");
+        assert_eq!(req.advance_ms, Some(50.0));
+        let stim = req.stimulus.unwrap();
+        assert_eq!(stim.values["drive"].data, vec![500.0]);
+        assert_eq!(stim.values["drive"].unit.as_deref(), Some("pA"));
+    }
+
+    #[test]
+    fn observation_frame_carries_scientific_boundary() {
+        let obs = ObservationFrame::default();
+        let v: serde_json::Value = serde_json::to_value(&obs).unwrap();
+        assert_eq!(v["calibrated_posterior"], serde_json::json!(false));
+        assert_eq!(v["is_simulation_output"], serde_json::json!(true));
+        assert_eq!(v["kind"], serde_json::json!("observation_frame"));
+    }
+
+    #[test]
+    fn network_ref_field_is_ref_on_the_wire() {
+        let n = NetworkRef { ref_: "iaf_psc_alpha".into(), ..Default::default() };
+        let v: serde_json::Value = serde_json::to_value(&n).unwrap();
+        assert_eq!(v["ref"], serde_json::json!("iaf_psc_alpha"));
+        assert_eq!(v["kind"], serde_json::json!("builtin"));
+    }
+
+    #[test]
+    fn version_guard() {
+        assert!(check_version("0.1", true).unwrap());
+        assert!(check_version("0.9", true).unwrap()); // minor diff ok
+        assert!(!check_version("1.0", false).unwrap());
+        assert!(check_version("1.0", true).is_err());
+        assert!(check_version("bogus", false).is_err());
+    }
+
+    #[test]
+    fn codec_encode_decode_roundtrip() {
+        let codec = default_uav_velocity_codec();
+        let mut channels = Map::new();
+        channels.insert("pose_error".into(), ChannelValue::vec3(2.0, 0.0, -2.0, Some("m")));
+        let sensor = SensorFrame { channels, ..Default::default() };
+        let rates = codec.encode(Some(&sensor));
+        // +2.0 error -> top of rate range; -2.0 -> bottom.
+        assert!((rates["err_x"] - 200.0).abs() < 1e-6);
+        assert!((rates["err_z"] - 0.0).abs() < 1e-6);
+        let cmd = codec.decode(&rates, 0.0, 0, "world", Mode::Active);
+        assert_eq!(cmd.channels["velocity_setpoint"].data.len(), 3);
+    }
+}

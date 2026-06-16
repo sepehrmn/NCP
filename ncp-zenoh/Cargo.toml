@@ -1,0 +1,22 @@
+[package]
+name = "ncp-zenoh"
+description = "Neuro-Control Protocol (NCP) — the recommended decoupled transport: Zenoh queryable (RPC) + pub/sub (perception/action/observation planes) with per-plane QoS."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+ncp-core = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+# Latest stable Zenoh. Core pub/sub/query only — default features pull a heavy
+# plugin chain we don't need. Cargo feature-unification is additive, so a host
+# (e.g. crebain, which enables zenoh's default features) still gets them in its
+# own build, and the version unifies to crebain's 1.9 pin.
+zenoh = { version = "1.9", default-features = false }
+tokio = { version = "1", features = ["rt-multi-thread", "sync", "macros"] }
+
+[features]
+default = []

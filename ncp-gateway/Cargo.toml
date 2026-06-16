@@ -1,0 +1,18 @@
+[package]
+name = "ncp-gateway"
+description = "Engram's Rust NCP edge: runs the Zenoh bus (queryable RPC + observation pub/sub) and bridges to the Python SessionService over a localhost socket. NEST stays Python."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "ncp-gateway"
+path = "src/main.rs"
+
+[dependencies]
+ncp-core = { workspace = true }
+ncp-zenoh = { path = "../ncp-zenoh" }
+serde_json = { workspace = true }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "net", "io-util"] }

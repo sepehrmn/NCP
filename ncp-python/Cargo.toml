@@ -1,0 +1,19 @@
+[package]
+name = "ncp-python"
+description = "Python bindings (PyO3) for the NCP Rust core — so Python projects use the canonical Rust implementation (version guard, key scheme, rate codec, safety governor, message validation) instead of reimplementing the wire."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[lib]
+name = "ncp"
+# cdylib → the importable `ncp` Python extension (build with maturin/abi3); rlib
+# so `cargo build`/check verifies the binding compiles without a Python link step.
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+ncp-core = { workspace = true }
+serde_json = { workspace = true }
+pyo3 = { version = "0.23", features = ["extension-module", "abi3-py311"] }
