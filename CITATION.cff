@@ -1,0 +1,25 @@
+cff-version: 1.2.0
+title: "NCP — Neuro-Cybernetic Protocol"
+message: >-
+  If you use this software in your research, please cite it using the
+  metadata from this file.
+type: software
+authors:
+  - family-names: Mahmoudian
+    given-names: Sepehr
+repository-code: 'https://github.com/sepehrmn/ncp'
+url: 'https://github.com/sepehrmn/ncp'
+abstract: >-
+  A versioned, transport-agnostic, project-agnostic wire contract that lets a
+  spiking neural simulation serve external robot, UAV, and analysis systems for
+  perception and action, with explicit provenance and a safety-gated action
+  plane. Outputs are control artifacts, never validated reproductions.
+keywords:
+  - spiking-neural-network
+  - neurorobotics
+  - robotics
+  - protocol
+  - nest-simulator
+  - zenoh
+license: MIT
+version: 0.1.0

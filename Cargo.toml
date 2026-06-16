@@ -1,4 +1,4 @@
-# Neuro-Control Protocol (NCP) — Rust reference SDK (workspace).
+# Neuro-Cybernetic Protocol (NCP) — Rust reference SDK (workspace).
 #
 # NCP is a versioned, transport-agnostic, project-agnostic standard for letting an
 # Engram-driven NEST simulation serve external robot / UAV / simulation systems
@@ -8,9 +8,9 @@
 #
 # This workspace is self-contained and **extractable**: it has no path/parent
 # dependency on the surrounding Paper2Brain repo and can be lifted into its own
-# repository / published to crates.io with no refactoring. Consumers (crebain,
-# pid_vla, the Engram gateway) depend on `ncp-core` (+ `ncp-zenoh`) as a normal
-# dependency.
+# repository / published to crates.io with no refactoring. Consumers (robot/UAV
+# bodies, analysis/observer clients, and an Engram gateway) depend on `ncp-core`
+# (+ `ncp-zenoh`) as a normal dependency.
 #
 # Crates:
 #   ncp-core    — pure protocol: wire types (serde), version guard, key scheme,
@@ -28,6 +28,7 @@ members = ["ncp-core", "ncp-zenoh", "ncp-gateway", "ncp-python", "ncp-cpp"]
 version = "0.1.0"
 edition = "2021"
 license = "MIT"
+authors = ["Sepehr Mahmoudian"]
 repository = "https://github.com/sepehrmn/ncp"
 rust-version = "1.81.0"
 

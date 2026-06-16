@@ -1,0 +1,347 @@
+// Neuro-Cybernetic Protocol (NCP) v0.1 — protobuf IDL.
+//
+// NON-NORMATIVE MIRROR. This `.proto` is a convenience mirror of the NCP wire
+// contract for teams that prefer a protobuf/gRPC transport; it is NOT the
+// canonical source. The de-facto contract is the JSON wire, as defined by:
+//
+//   - the Rust serde reference types in `ncp-core/src/messages.rs`, and
+//   - the JSON Schemas in `schemas/` that are generated from the reference types.
+//
+// When this file and the JSON Schemas / Rust types disagree, the JSON Schemas
+// (and the Rust types they are generated from) win. No codegen consumes this
+// file — it is hand-maintained documentation of the binary-transport shape, and
+// must be reconciled to the JSON contract whenever the reference types change.
+//
+// Wire conventions mirrored from the JSON contract:
+//   - every message carries a `kind` string discriminator and an `ncp_version`
+//     string ("0.1"); receivers check the *major* of `ncp_version` only,
+//   - enum values on the JSON wire are the string forms ("V_m", "spike_times",
+//     …); the proto enums below are a typed convenience — the canonical wire
+//     value is the string in `schemas/`,
+//   - integer fields (ids, sizes, seq, seed) are int64 to match the Rust `i64`
+//     reference types and the JSON `"integer"` schema type,
+//   - `record`/`stimulus` on OpenSession are NESTED specs (RecordSpec /
+//     StimulusSpec), each wrapping a repeated list of targets,
+//   - unknown fields are ignored on deserialize (forward compatible within a
+//     major version).
+//
+// NCP is transport-agnostic. The recommended *decoupled* default is **Zenoh**
+// (these messages as payloads over a data-centric pub/sub + queryable bus — no
+// client bound to a server address). The same messages ride WebSocket/JSON (the
+// shipped, zero-friction fallback) and, optionally, the `NeuroSim` gRPC service
+// below for point-to-point deployments. Choose the medium per deployment; the
+// contract is one.
+
+syntax = "proto3";
+
+package engram.ncp.v0;
+
+// ───────────────────────── primitives ─────────────────────────
+
+message ChannelValue {
+  repeated double data = 1;
+  string unit = 2;            // optional; "" = unset
+}
+
+enum Observable {
+  OBSERVABLE_UNSPECIFIED = 0;
+  V_M = 1;                    // wire string "V_m"
+  SPIKES = 2;                 // wire string "spikes"
+  RATE = 3;                   // wire string "rate"
+  WEIGHT = 4;                 // wire string "weight"
+}
+
+enum StimulusKind {
+  STIMULUS_KIND_UNSPECIFIED = 0;
+  CURRENT_PA = 1;             // wire string "current_pA"
+  RATE_HZ = 2;                // wire string "rate_hz"
+  SPIKE_TIMES = 3;            // wire string "spike_times"
+  WEIGHT_SET = 4;             // wire string "weight_set"
+}
+
+enum NetworkRefKind {
+  NETWORK_REF_KIND_UNSPECIFIED = 0;
+  HANDLE = 1;     // backend-issued pynest_script_id / compiled_module_id
+  BUILTIN = 2;    // NEST built-in neuron model name
+  MODEL_ID = 3;   // Engram KG / paper-derived model id
+  SPEC = 4;
+}
+
+enum EntityRole {
+  ENTITY_ROLE_UNSPECIFIED = 0;
+  SYSTEM = 1;                 // wire string "system"
+  ACTOR = 2;                  // wire string "actor"
+  SENSOR = 3;                 // wire string "sensor"
+  ACTUATOR = 4;               // wire string "actuator"
+}
+
+enum ChannelKindEnum {
+  CHANNEL_KIND_UNSPECIFIED = 0;
+  SCALAR = 1;                 // wire string "scalar"
+  VEC3 = 2;                   // wire string "vec3"
+  QUAT = 3;                   // wire string "quat"
+  ARRAY = 4;                  // wire string "array"
+}
+
+enum Role {
+  ROLE_UNSPECIFIED = 0;
+  CONTROLLER = 1;             // wire string "controller"
+  PLANT = 2;                  // wire string "plant"
+}
+
+enum Mode {
+  MODE_UNSPECIFIED = 0;
+  INIT = 1;                   // wire string "init"
+  ACTIVE = 2;                 // wire string "active"
+  HOLD = 3;                   // wire string "hold"
+  ESTOP = 4;                  // wire string "estop"
+}
+
+// ───────────────────────── entity addressing ─────────────────────────
+
+message EntityRef {
+  string path = 1;             // e.g. "uav1/sensor/cam0"
+  EntityRole role = 2;         // system|actor|sensor|actuator
+  map<string, string> meta = 3;
+}
+
+message EntityBinding {
+  EntityRef entity = 1;
+  string port = 2;
+  string direction = 3;        // "stimulus" | "record"
+}
+
+// ───────────────────────── session config ─────────────────────────
+
+message NetworkRef {
+  NetworkRefKind kind = 1;
+  string ref = 2;              // builtin name or compiled_module_id (kind=handle)
+  string model_name = 3;       // kind=handle: which registered model; "" = unset
+  map<string, int64> population_sizes = 4;
+  map<string, double> params = 5;
+}
+
+message RecordTarget {
+  string port = 1;             // client name for this recording
+  string target = 2;           // population/group name in the network
+  Observable observable = 3;
+  repeated int64 ids = 4;      // empty = all
+  double cadence_ms = 5;
+}
+
+// Nested spec wrapper (matches the JSON: record.targets / stimulus.targets).
+message RecordSpec {
+  repeated RecordTarget targets = 1;
+}
+
+message StimulusTarget {
+  string port = 1;
+  string target = 2;
+  StimulusKind kind = 3;
+  repeated int64 ids = 4;
+}
+
+message StimulusSpec {
+  repeated StimulusTarget targets = 1;
+}
+
+message SimConfig {
+  double dt_ms = 1;
+  double chunk_ms = 2;
+  int64 seed = 3;              // 0 = unset
+  string mode = 4;            // "stream" | "batch"
+  double duration_ms = 5;
+}
+
+message SimProvenance {
+  string network_ref = 1;
+  string backend = 2;
+  int64 seed = 3;
+  bool calibrated_posterior = 4;   // always false
+  bool is_simulation_output = 5;   // always true
+  bool advisory_only = 6;
+  string note = 7;
+}
+
+// ───────────────────────── session messages ─────────────────────────
+
+message OpenSession {
+  string ncp_version = 1;
+  string kind = 2;                  // "open_session"
+  string session_id = 3;
+  NetworkRef network = 4;
+  RecordSpec record = 5;            // nested spec, not a flat repeated list
+  StimulusSpec stimulus = 6;        // nested spec, not a flat repeated list
+  SimConfig sim = 7;
+  repeated EntityBinding bindings = 8;
+}
+
+message SessionOpened {
+  string ncp_version = 1;
+  string kind = 2;                  // "session_opened"
+  string session_id = 3;
+  bool ok = 4;
+  string backend = 5;
+  map<string, int64> resolved = 6;     // target -> neuron count
+  SimProvenance provenance = 7;
+  string error = 8;
+}
+
+message StimulusFrame {
+  string ncp_version = 1;
+  string kind = 2;                  // "stimulus_frame"
+  string session_id = 3;
+  double t = 4;
+  map<string, ChannelValue> values = 5;   // keyed by stimulus port
+}
+
+message StepRequest {
+  string ncp_version = 1;
+  string kind = 2;                  // "step_request"
+  string session_id = 3;
+  double advance_ms = 4;            // 0 = use SimConfig.chunk_ms
+  StimulusFrame stimulus = 5;
+}
+
+message RunRequest {
+  string ncp_version = 1;
+  string kind = 2;                  // "run_request"
+  string session_id = 3;
+  double duration_ms = 4;
+  StimulusFrame stimulus = 5;
+}
+
+message Observation {
+  string port = 1;
+  string target = 2;
+  Observable observable = 3;
+  repeated double times = 4;     // analog sample times OR spike times
+  repeated double values = 5;    // analog values (parallel to times)
+  repeated int64 senders = 6;    // spike sender ids (parallel to times)
+  string unit = 7;
+}
+
+message ObservationFrame {
+  string ncp_version = 1;
+  string kind = 2;                        // "observation_frame"
+  string session_id = 3;
+  int64 seq = 4;                          // echoes the driving SensorFrame.seq in a closed loop (0 in the pull path)
+  double t = 5;
+  double sim_time_ms = 6;
+  map<string, Observation> records = 7;   // keyed by record port
+  bool calibrated_posterior = 8;          // always false
+  bool is_simulation_output = 9;          // always true
+}
+
+message CloseSession {
+  string ncp_version = 1;
+  string kind = 2;                  // "close_session"
+  string session_id = 3;
+}
+
+message SessionClosed {
+  string ncp_version = 1;
+  string kind = 2;                  // "session_closed"
+  string session_id = 3;
+  bool ok = 4;
+}
+
+// ───────────────────────── closed-loop control (layered) ─────────────────────────
+
+message ChannelSpec {
+  string name = 1;
+  ChannelKindEnum kind = 2;
+  string unit = 3;                  // "" = unset
+  int64 size = 4;                   // 0 = unset
+  bool optional = 5;
+  string description = 6;           // "" = unset
+}
+
+message SafetyLimits {
+  double max_speed_mps = 1;         // 0 = unset
+  double max_tilt_rad = 2;          // 0 = unset
+  double geofence_radius_m = 3;     // 0 = unset
+  double command_timeout_ms = 4;
+}
+
+// Handshake: who the controller is and what it speaks.
+message Capabilities {
+  string ncp_version = 1;
+  string kind = 2;                  // "capabilities"
+  string controller_id = 3;
+  Role role = 4;
+  double control_rate_hz = 5;
+  repeated ChannelSpec sensor_channels = 6;
+  repeated ChannelSpec command_channels = 7;
+  string codec_id = 8;              // "" = unset
+  SafetyLimits safety = 9;
+}
+
+message SensorFrame {
+  string ncp_version = 1;
+  string kind = 2;                  // "sensor_frame"
+  int64 seq = 3;
+  double t = 4;
+  string frame_id = 5;
+  map<string, ChannelValue> channels = 6;
+}
+
+// One predictive setpoint step (proto can't nest a map in a repeated field).
+message SetpointStep { map<string, ChannelValue> channels = 1; }
+
+message CommandFrame {
+  string ncp_version = 1;
+  string kind = 2;                  // "command_frame"
+  int64 seq = 3;
+  double t = 4;
+  string frame_id = 5;
+  string mode = 6;            // init|active|hold|estop
+  double ttl_ms = 7;
+  map<string, ChannelValue> channels = 8;        // tick 0
+  repeated SetpointStep horizon = 9;             // packetized predictive control: tick i+1
+  double horizon_dt_ms = 10;                      // 0 = unset (legacy single-step)
+}
+
+// Controller -> plant / telemetry: loop health and mode.
+message ControlStatus {
+  string ncp_version = 1;
+  string kind = 2;                  // "control_status"
+  int64 seq = 3;
+  double t = 4;
+  string mode = 5;            // init|active|hold|estop
+  double sim_time_ms = 6;
+  double loop_latency_ms = 7;
+  bool safety_ok = 8;
+  string note = 9;                  // "" = unset
+}
+
+// Link-health telemetry from the seq-gap / CUSUM monitor (control plane).
+message LinkStatus {
+  string ncp_version = 1;
+  string kind = 2;                  // "link_status"
+  string session_id = 3;
+  double t = 4;
+  int64 last_seq = 5;
+  int64 received = 6;
+  int64 lost = 7;
+  double loss_rate = 8;
+  bool burst = 9;             // sustained loss (possible jam) -> fail safe
+}
+
+// ───────────────────────── service ─────────────────────────
+
+service NeuroSim {
+  // Simulation-service RPCs (unary).
+  rpc Open(OpenSession) returns (SessionOpened);
+  rpc Step(StepRequest) returns (ObservationFrame);
+  rpc Run(RunRequest) returns (ObservationFrame);
+  rpc Close(CloseSession) returns (SessionClosed);
+
+  // Stream observations as a session advances under a stimulus schedule.
+  rpc Observe(StepRequest) returns (stream ObservationFrame);
+
+  // Closed-loop control: the plant streams sensor frames; Engram streams back
+  // command frames. (Engram emits NCP commands; the project's own adapter maps
+  // them to its actuators — keeping project specifics out of Engram core.)
+  rpc Control(stream SensorFrame) returns (stream CommandFrame);
+}

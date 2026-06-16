@@ -97,8 +97,15 @@ impl Controller for ReflexController {
     fn step(&mut self, sensor: Option<&SensorFrame>, _dt_ms: f64) -> CommandFrame {
         let Some(sensor) = sensor else {
             let mut ch = crate::messages::Map::new();
-            ch.insert("velocity_setpoint".into(), ChannelValue::vec3(0.0, 0.0, 0.0, Some("m/s")));
-            return CommandFrame { mode: Mode::Hold, channels: ch, ..Default::default() };
+            ch.insert(
+                "velocity_setpoint".into(),
+                ChannelValue::vec3(0.0, 0.0, 0.0, Some("m/s")),
+            );
+            return CommandFrame {
+                mode: Mode::Hold,
+                channels: ch,
+                ..Default::default()
+            };
         };
         let get3 = |name: &str| -> [f64; 3] {
             let mut out = [0.0; 3];
@@ -117,7 +124,13 @@ impl Controller for ReflexController {
             cmd.push(u.clamp(-self.max_speed, self.max_speed));
         }
         let mut ch = crate::messages::Map::new();
-        ch.insert("velocity_setpoint".into(), ChannelValue { data: cmd, unit: Some("m/s".into()) });
+        ch.insert(
+            "velocity_setpoint".into(),
+            ChannelValue {
+                data: cmd,
+                unit: Some("m/s".into()),
+            },
+        );
         CommandFrame {
             t: sensor.t,
             seq: sensor.seq,
@@ -139,6 +152,11 @@ pub struct NeuroControlLoop<T: ControlTransport, C: Controller> {
     now_fn: Box<dyn Fn() -> f64 + Send>,
     seq: i64,
     last_sensor_t: Option<f64>,
+    /// Last accepted sensor's `(t, seq)`, to detect a frozen/cached stream. The
+    /// watchdog clock (`last_sensor_t`) only advances when the sensor STRICTLY
+    /// advances (FIX 4) — a repeated/stale frame must still trip the stale-sensor
+    /// HOLD even though a frame "arrived".
+    last_sensor_ts: Option<(f64, i64)>,
 }
 
 impl<T: ControlTransport, C: Controller> NeuroControlLoop<T, C> {
@@ -151,6 +169,7 @@ impl<T: ControlTransport, C: Controller> NeuroControlLoop<T, C> {
             now_fn: Box::new(monotonic_secs),
             seq: 0,
             last_sensor_t: None,
+            last_sensor_ts: None,
         }
     }
 
@@ -168,18 +187,30 @@ impl<T: ControlTransport, C: Controller> NeuroControlLoop<T, C> {
     pub fn tick(&mut self) -> CommandFrame {
         let now = (self.now_fn)();
         let sensor = self.transport.latest_sensor();
-        if sensor.is_some() {
-            self.last_sensor_t = Some(now);
+        // FIX 4: only treat the sensor as "fresh" when its (t, seq) STRICTLY
+        // advanced. A frozen/cached stream (same t & seq re-delivered) must NOT
+        // refresh the watchdog clock, so the stale-sensor HOLD still trips.
+        if let Some(s) = sensor.as_ref() {
+            let advanced = match self.last_sensor_ts {
+                None => true,
+                Some((pt, pseq)) => s.t > pt || (s.t == pt && s.seq > pseq),
+            };
+            if advanced {
+                self.last_sensor_t = Some(now);
+                self.last_sensor_ts = Some((s.t, s.seq));
+            }
         }
         let mut cmd = self.controller.step(sensor.as_ref(), self.dt_ms());
         cmd.seq = self.seq;
-        let cmd = self.gov.govern(&cmd, sensor.as_ref(), now, self.last_sensor_t);
+        let cmd = self
+            .gov
+            .govern(&cmd, sensor.as_ref(), now, self.last_sensor_t);
         self.transport.send_command(&cmd);
         self.transport.send_status(&ControlStatus {
             seq: self.seq,
             t: now,
             mode: cmd.mode,
-            safety_ok: cmd.mode != Mode::Estop,
+            safety_ok: self.gov.safety_ok(),
             ..Default::default()
         });
         self.seq += 1;
@@ -207,7 +238,11 @@ mod tests {
             transport.clone(),
             controller,
             20.0,
-            SafetyLimits { max_speed_mps: Some(1.5), command_timeout_ms: 500.0, ..Default::default() },
+            SafetyLimits {
+                max_speed_mps: Some(1.5),
+                command_timeout_ms: 500.0,
+                ..Default::default()
+            },
         )
         .with_clock(Box::new(move || *clock2.lock().unwrap()));
 
@@ -217,13 +252,74 @@ mod tests {
 
         // Provide a sensor with a position error -> ACTIVE drive back toward origin.
         let mut ch = crate::messages::Map::new();
-        ch.insert("pose_position".into(), ChannelValue::vec3(1.0, 0.0, 0.0, Some("m")));
-        ch.insert("pose_velocity".into(), ChannelValue::vec3(0.0, 0.0, 0.0, Some("m/s")));
-        transport.push_sensor(SensorFrame { channels: ch, ..Default::default() });
+        ch.insert(
+            "pose_position".into(),
+            ChannelValue::vec3(1.0, 0.0, 0.0, Some("m")),
+        );
+        ch.insert(
+            "pose_velocity".into(),
+            ChannelValue::vec3(0.0, 0.0, 0.0, Some("m/s")),
+        );
+        transport.push_sensor(SensorFrame {
+            channels: ch,
+            ..Default::default()
+        });
         *clock.lock().unwrap() = 0.05;
         let cmd = loop_.tick();
         assert_eq!(cmd.mode, Mode::Active);
         let v = &cmd.channels["velocity_setpoint"].data;
         assert!(v[0] < 0.0, "should push back toward origin, got {v:?}");
+    }
+
+    #[test]
+    fn frozen_sensor_trips_stale_hold() {
+        // FIX 4: a sensor that keeps arriving with the SAME (t, seq) is a frozen
+        // stream; the watchdog clock must not advance, so once the timeout elapses
+        // the loop HOLDs even though frames are "arriving" every tick.
+        let transport = InProcessTransport::new();
+        let clock = Arc::new(Mutex::new(0.0_f64));
+        let clock2 = clock.clone();
+        let mut loop_ = NeuroControlLoop::new(
+            transport.clone(),
+            ReflexController::default(),
+            20.0,
+            SafetyLimits {
+                max_speed_mps: Some(1.5),
+                command_timeout_ms: 200.0,
+                ..Default::default()
+            },
+        )
+        .with_clock(Box::new(move || *clock2.lock().unwrap()));
+
+        // One frozen frame (t=0, seq=0) that we never update.
+        let mut ch = crate::messages::Map::new();
+        ch.insert(
+            "pose_position".into(),
+            ChannelValue::vec3(1.0, 0.0, 0.0, Some("m")),
+        );
+        ch.insert(
+            "pose_velocity".into(),
+            ChannelValue::vec3(0.0, 0.0, 0.0, Some("m/s")),
+        );
+        transport.push_sensor(SensorFrame {
+            t: 0.0,
+            seq: 0,
+            channels: ch,
+            ..Default::default()
+        });
+
+        // First tick at t=0 accepts it -> ACTIVE.
+        let cmd = loop_.tick();
+        assert_eq!(cmd.mode, Mode::Active, "first fresh frame drives");
+
+        // Advance wall clock well past the 200 ms timeout WITHOUT updating the
+        // sensor (same t & seq re-delivered). The frozen stream must go stale.
+        *clock.lock().unwrap() = 0.5;
+        let cmd = loop_.tick();
+        assert_eq!(
+            cmd.mode,
+            Mode::Hold,
+            "a frozen sensor must trip the stale-sensor HOLD"
+        );
     }
 }

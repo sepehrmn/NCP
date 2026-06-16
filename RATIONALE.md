@@ -1,4 +1,4 @@
-# Why NCP Was Needed — Design Rationale for the Neuro-Control Protocol
+# Why NCP Was Needed — Design Rationale for the Neuro-Cybernetic Protocol
 
 > An unbiased design-rationale document, researched against the robotics-middleware,
 > agent-protocol, RL/simulation, and neuroscience-co-simulation ecosystems, and
@@ -50,7 +50,7 @@ neural/provenance/safety/observer semantics** — and most of NCP's *performance
 topology* advantages are inherited from those substrates, not invented by NCP.
 
 **ROS 2 / DDS.** ROS 2's topics/services/actions map almost 1:1 onto NCP's needs,
-and crebain's clients already live in ROS 2 — it is unambiguously more mature and
+and typical robot/UAV clients already live in ROS 2 — it is unambiguously more mature and
 better-tooled (rviz, rosbag2, lifecycle nodes). DDS's QoS model is arguably a
 *better-specified* version of NCP's three-plane idea with a ~15-year
 safety-critical pedigree and µs shared-memory latency. Crucially, DDS already
@@ -62,7 +62,7 @@ The genuine NCP-specific safety part is only the `mode` enum (init/active/hold/
 estop) as a *wire concept*. The gap that remains: ROS 2 gives the IDL machinery
 but no neural V_m/spikes/stimulus vocabulary and no provenance boundary, and
 binding the NEST server to the ROS graph/build system burdens non-ROS consumers
-(pid_vla is a plain Rust analyzer, not a ROS node). ROS 2 is the right *client
+(an analysis/observer client may be a plain Rust analyzer, not a ROS node). ROS 2 is the right *client
 framework*, not a replacement for the semantic + provenance layer.
 
 **Zenoh alone.** Zenoh is the best substrate match and NCP's chosen transport:
@@ -105,7 +105,7 @@ MCP's versioned capability handshake on its control plane.
 `reset`/`step` ↔ NCP `open`/`step`/`run`, and `observation_spec`/`action_spec` is a
 clean typed-capability idiom. Gymnasium is the de-facto RL standard with a vastly
 larger ecosystem. The *standard specs* are in-process single-language Python (which
-is why crebain-Rust and pid_vla-Rust can't call them across the wire) — though note
+is why Rust clients can't call them across the wire) — though note
 this is a property of the spec, not a hard law (dm_env_rpc and third-party gRPC
 bridges cross the wire). The right ergonomic north star to imitate; not the wire.
 
@@ -153,7 +153,7 @@ must be answered:
 > `SimProvenance` sub-message. Set per-topic QoS: Reliable + Deadline + Lifespan
 > for action, Best-Effort + KeepLast(1) for perception. Implement ESTOP/HOLD/TTL
 > as a node-level lifecycle plus a Deadline/Liveliness/Lifespan watchdog. Non-ROS
-> clients (pid_vla, crebain) read the same Zenoh keys via `zenoh-rs` directly. You
+> clients (analysis/observer clients, robot/UAV bodies) read the same Zenoh keys via `zenoh-rs` directly. You
 > now have neural semantics, provenance, QoS planes, a free observer, and fleet —
 > with zero new protocol, zero new SDK, and ROS 2's entire tooling and governance
 > for free. What does `ncp.proto` + `ncp-core` + `ncp-zenoh` + PyO3 buy that this
@@ -176,7 +176,7 @@ conceded:
    languages via FFI, beats three reimplementations of ESTOP/HOLD/TTL/encoding.
    *Weakness:* only true once that one crate is actually audited and conformance-
    tested — which it is not yet.
-4. **No ROS build/graph imposed** on a plain analyzer like pid_vla. *Weakness:*
+4. **No ROS build/graph imposed** on a plain analyzer like an analysis/observer client. *Weakness:*
    real but modest; the cost is a dependency, not impossibility.
 
 Net: the composition alternative is **viable and cheaper to own**, and a team
@@ -236,7 +236,7 @@ is native, no browser WASM), so TS is the least-unified peer.
 
 **6. Safety & control authority.** *Advantage:* the action plane has an explicit
 `mode` (init/active/hold/estop) the controller asserts on the wire, with the
-crebain mapping failing safe to zero velocity on hold/estop — a *protocol* concept
+robot/UAV mapping failing safe to zero velocity on hold/estop — a *protocol* concept
 no surveyed alternative states as an enum (though DDS LIFESPAN≈`ttl_ms` and
 OWNERSHIP/LIVELINESS cover much of the rest). *Disadvantage (confronted directly):*
 this is a **v0.1, single reference implementation, no conformance suite**, on a bus
@@ -253,16 +253,19 @@ record/stimulus modeling is MUSIC/NRP prior art*, not novel; it is NEST-shaped
 today, and the "simulator-agnostic" ambition is untested. (So: NCP-only as a *wire
 vocabulary*, not as a concept.)
 
-**8. Observability & analysis.** *Advantage:* pid_vla's `ncp-observer` subscribes
+**8. Observability & analysis.** *Advantage:* an analysis/observer client's `ncp-observer` subscribes
 read-only and turns each tick into a typed `(V,L,D,A)` PID sample. *Disadvantage:*
 **the "free tap" is a property of the bus, not of NCP** — any DDS/ROS 2 topic is
 multi-subscriber (`ros2 bag record`, `rostopic echo`, DDS spy are the same free
 tap); NCP's only contribution here is the typed `(V,L,D,A)`+provenance *semantics*
 on the frame. And the same free-read property means the action plane is
 **world-writable on an unauthenticated bus** — a safety *and* security hole, not
-only a feature. Alignment is also imperfect: V↔A join on `seq`, but
-`ObservationFrame` has no `seq`, so D is paired best-effort by recency (a noted,
-unshipped enhancement).
+only a feature. Alignment uses `seq`: `SensorFrame`, `CommandFrame`,
+`ControlStatus`, and `ObservationFrame` all carry a `seq` field (see
+`messages.rs`, `schemas/observation_frame.schema.json`, the `.proto`, and the TS
+binding), so a split-plane observer can join `(V,L,D,A)` on `seq` rather than on
+arrival time. In the pure pull/sim-service path (no controller) `ObservationFrame.seq`
+is `0`; inside a closed loop it echoes the driving `SensorFrame.seq`.
 
 **9. Ecosystem maturity, adoption & risk.** *Advantage:* rides proven substrates
 rather than reinventing them. *Disadvantage (the NIH critique, and the cost of

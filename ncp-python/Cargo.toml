@@ -16,4 +16,12 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 ncp-core = { workspace = true }
 serde_json = { workspace = true }
-pyo3 = { version = "0.23", features = ["extension-module", "abi3-py311"] }
+# `extension-module` is NOT default: enabling it unconditionally breaks
+# `cargo build/test --workspace` on Linux/Windows (it suppresses the libpython
+# link, so the `rlib`/test build has no Python symbols). maturin enables it via
+# the `extension-module` feature below when building the importable wheel.
+pyo3 = { version = "0.23", default-features = false, features = ["abi3-py311", "macros"] }
+
+[features]
+default = []
+extension-module = ["pyo3/extension-module"]

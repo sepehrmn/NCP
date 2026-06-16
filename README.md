@@ -1,4 +1,4 @@
-# NCP — Neuro-Control Protocol (Rust reference SDK)
+# NCP — Neuro-Cybernetic Protocol (Rust reference SDK)
 
 A versioned, **transport-agnostic, project-agnostic** standard for letting an
 Engram-driven NEST simulation serve external robot / UAV / simulation systems —
@@ -11,9 +11,9 @@ Why NCP exists at all — an unbiased rationale vs ROS 2/DDS, Zenoh, MUSIC, the
 Neurorobotics Platform, MCP/ACP, gRPC, dm_env_rpc, and the "compose, don't invent"
 alternative — is in [`RATIONALE.md`](RATIONALE.md).
 
-The human-readable spec is [`../NEURO_CONTROL_PROTOCOL.md`](../NEURO_CONTROL_PROTOCOL.md);
-the polyglot payload contract is [`../backend/neurocontrol/ncp.proto`](../backend/neurocontrol/ncp.proto)
-with JSON-Schema mirrors in `../backend/neurocontrol/schemas/`. The Rust types
+The human-readable spec is [`NEURO_CYBERNETIC_PROTOCOL.md`](NEURO_CYBERNETIC_PROTOCOL.md);
+the polyglot payload contract is [`proto/ncp.proto`](proto/ncp.proto)
+with JSON-Schema mirrors in [`schemas/`](schemas/). The Rust types
 here serialize to **exactly** that JSON, so the Rust, Python and TypeScript peers
 interoperate over any transport.
 
@@ -76,11 +76,11 @@ loop is one `nest.Run(chunk)` binding sense→act; only the wire diverges.
 {realm}/rpc                              control-plane RPC   queryable, reliable
 {realm}/session/{id}/sensor[/{name}]     perception plane    pub/sub, DROP, conflate to latest (lossy-OK)
 {realm}/session/{id}/command[/{name}]    action plane        pub/sub, express + DROP + RealTime, safety-gated (ttl/HOLD/ESTOP)
-{realm}/session/{id}/observation         neural / diagnostic pub/sub — free read-only observer tap (e.g. pid_vla)
+{realm}/session/{id}/observation         neural / diagnostic pub/sub — free read-only observer tap (e.g. an analysis/observer client)
 ```
 
-The pub/sub data planes mean **observers attach for free**: an analyzer (pid_vla)
-subscribes read-only to `…/sensor` / `…/command` / `…/observation` with zero
+The pub/sub data planes mean **observers attach for free**: an analysis/observer
+client subscribes read-only to `…/sensor` / `…/command` / `…/observation` with zero
 changes to the control path — the structural reason to choose a data-centric bus
 over point-to-point gRPC for a fleet + watchers.
 
@@ -123,22 +123,22 @@ cargo run -p ncp-gateway      # NCP_REALM, NCP_BRIDGE_ADDR=127.0.0.1:28474 confi
 ## Cross-repo consumption
 
 NCP is **one canonical crate** that every peer depends on (a standard has one
-implementation, not vendored copies). The consumers in sibling repos use a path
-dependency to this workspace:
+implementation, not vendored copies). Consumers declare it as an ordinary
+dependency:
 
 ```toml
-# crebain/src-tauri/Cargo.toml   (optional, behind the `ncp` feature)
-ncp-core  = { path = "../../Paper2Brain/ncp/ncp-core",  optional = true }
-ncp-zenoh = { path = "../../Paper2Brain/ncp/ncp-zenoh", optional = true }
+# a robot/UAV client's Cargo.toml   (optional, behind an `ncp` feature)
+ncp-core  = { version = "*", optional = true }
+ncp-zenoh = { version = "*", optional = true }
 
-# pid_vla/crates/ncp-observer/Cargo.toml
-ncp-core  = { path = "../../../Paper2Brain/ncp/ncp-core" }
-ncp-zenoh = { path = "../../../Paper2Brain/ncp/ncp-zenoh" }
+# an analysis/observer client's ncp-observer crate
+ncp-core  = "*"
+ncp-zenoh = "*"
 ```
 
-The sibling layout is the local-development contract. For external adopters or
-standalone CI, switch these to a `git`/`crates.io` dependency — a one-line change
-that needs no code edits (the crate is self-contained).
+For external adopters this is a `crates.io` (or `git`) dependency; for
+local development against a checkout it can be a `path` dependency instead — a
+one-line change that needs no code edits (the crate is self-contained).
 
 ## Build & test
 

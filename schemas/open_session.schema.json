@@ -1,0 +1,322 @@
+{
+  "$defs": {
+    "EntityBinding": {
+      "description": "Documents how a client entity maps to a stimulus or record port.",
+      "properties": {
+        "entity": {
+          "$ref": "#/$defs/EntityRef"
+        },
+        "port": {
+          "title": "Port",
+          "type": "string"
+        },
+        "direction": {
+          "default": "stimulus",
+          "enum": [
+            "stimulus",
+            "record"
+          ],
+          "title": "Direction",
+          "type": "string"
+        }
+      },
+      "required": [
+        "entity",
+        "port"
+      ],
+      "title": "EntityBinding",
+      "type": "object"
+    },
+    "EntityRef": {
+      "description": "A hierarchical address for a client-side entity, e.g.\n``uav1/sensor/cam0`` or ``uav1/actuator/rotor`` \u2014 supports a\nsystem with 0..N sensors and 0..M actors that each own sensors/actuators.",
+      "properties": {
+        "path": {
+          "title": "Path",
+          "type": "string"
+        },
+        "role": {
+          "$ref": "#/$defs/EntityRole",
+          "default": "sensor"
+        },
+        "meta": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Meta",
+          "type": "object"
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "title": "EntityRef",
+      "type": "object"
+    },
+    "EntityRole": {
+      "enum": [
+        "system",
+        "actor",
+        "sensor",
+        "actuator"
+      ],
+      "title": "EntityRole",
+      "type": "string"
+    },
+    "NetworkRef": {
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/NetworkRefKind",
+          "default": "builtin"
+        },
+        "ref": {
+          "title": "Ref",
+          "type": "string"
+        },
+        "model_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Model Name"
+        },
+        "population_sizes": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "title": "Population Sizes",
+          "type": "object"
+        },
+        "params": {
+          "additionalProperties": {
+            "type": "number"
+          },
+          "title": "Params",
+          "type": "object"
+        }
+      },
+      "required": [
+        "ref"
+      ],
+      "title": "NetworkRef",
+      "type": "object"
+    },
+    "NetworkRefKind": {
+      "enum": [
+        "handle",
+        "builtin",
+        "model_id",
+        "spec"
+      ],
+      "title": "NetworkRefKind",
+      "type": "string"
+    },
+    "Observable": {
+      "enum": [
+        "spikes",
+        "V_m",
+        "rate",
+        "weight"
+      ],
+      "title": "Observable",
+      "type": "string"
+    },
+    "RecordSpec": {
+      "properties": {
+        "targets": {
+          "items": {
+            "$ref": "#/$defs/RecordTarget"
+          },
+          "title": "Targets",
+          "type": "array"
+        }
+      },
+      "title": "RecordSpec",
+      "type": "object"
+    },
+    "RecordTarget": {
+      "properties": {
+        "port": {
+          "title": "Port",
+          "type": "string"
+        },
+        "target": {
+          "title": "Target",
+          "type": "string"
+        },
+        "observable": {
+          "$ref": "#/$defs/Observable",
+          "default": "V_m"
+        },
+        "ids": {
+          "items": {
+            "type": "integer"
+          },
+          "title": "Ids",
+          "type": "array"
+        },
+        "cadence_ms": {
+          "default": 1.0,
+          "title": "Cadence Ms",
+          "type": "number"
+        }
+      },
+      "required": [
+        "port",
+        "target"
+      ],
+      "title": "RecordTarget",
+      "type": "object"
+    },
+    "SimConfig": {
+      "properties": {
+        "dt_ms": {
+          "default": 0.1,
+          "title": "Dt Ms",
+          "type": "number"
+        },
+        "chunk_ms": {
+          "default": 10.0,
+          "title": "Chunk Ms",
+          "type": "number"
+        },
+        "seed": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Seed"
+        },
+        "mode": {
+          "$ref": "#/$defs/SimMode",
+          "default": "stream"
+        },
+        "duration_ms": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Duration Ms"
+        }
+      },
+      "title": "SimConfig",
+      "type": "object"
+    },
+    "SimMode": {
+      "enum": [
+        "stream",
+        "batch"
+      ],
+      "title": "SimMode",
+      "type": "string"
+    },
+    "StimulusKind": {
+      "enum": [
+        "current_pA",
+        "rate_hz",
+        "spike_times",
+        "weight_set"
+      ],
+      "title": "StimulusKind",
+      "type": "string"
+    },
+    "StimulusSpec": {
+      "properties": {
+        "targets": {
+          "items": {
+            "$ref": "#/$defs/StimulusTarget"
+          },
+          "title": "Targets",
+          "type": "array"
+        }
+      },
+      "title": "StimulusSpec",
+      "type": "object"
+    },
+    "StimulusTarget": {
+      "properties": {
+        "port": {
+          "title": "Port",
+          "type": "string"
+        },
+        "target": {
+          "title": "Target",
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/StimulusKind",
+          "default": "current_pA"
+        },
+        "ids": {
+          "items": {
+            "type": "integer"
+          },
+          "title": "Ids",
+          "type": "array"
+        }
+      },
+      "required": [
+        "port",
+        "target"
+      ],
+      "title": "StimulusTarget",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "ncp_version": {
+      "default": "0.1",
+      "title": "Ncp Version",
+      "type": "string"
+    },
+    "kind": {
+      "const": "open_session",
+      "default": "open_session",
+      "title": "Kind",
+      "type": "string"
+    },
+    "session_id": {
+      "title": "Session Id",
+      "type": "string"
+    },
+    "network": {
+      "$ref": "#/$defs/NetworkRef"
+    },
+    "record": {
+      "$ref": "#/$defs/RecordSpec"
+    },
+    "stimulus": {
+      "$ref": "#/$defs/StimulusSpec"
+    },
+    "sim": {
+      "$ref": "#/$defs/SimConfig"
+    },
+    "bindings": {
+      "items": {
+        "$ref": "#/$defs/EntityBinding"
+      },
+      "title": "Bindings",
+      "type": "array"
+    }
+  },
+  "required": [
+    "session_id",
+    "network"
+  ],
+  "title": "OpenSession",
+  "type": "object"
+}

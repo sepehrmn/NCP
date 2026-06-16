@@ -11,6 +11,12 @@ use crate::messages::{ChannelValue, CommandFrame, Map, Mode, SensorFrame};
 use serde::{Deserialize, Serialize};
 
 fn clamp(x: f64, lo: f64, hi: f64) -> f64 {
+    // A non-finite input (NaN/±inf) has no defensible clamped value and would
+    // otherwise poison the whole pipeline (NaN sensor -> NaN rate -> NaN
+    // command). Fail safe to the low bound rather than propagate it.
+    if !x.is_finite() {
+        return lo;
+    }
     if x < lo {
         lo
     } else if x > hi {
@@ -91,7 +97,11 @@ pub struct CodecSpec {
 
 impl Default for CodecSpec {
     fn default() -> Self {
-        Self { codec_id: default_codec_id(), encoder: Vec::new(), decoder: Vec::new() }
+        Self {
+            codec_id: default_codec_id(),
+            encoder: Vec::new(),
+            decoder: Vec::new(),
+        }
     }
 }
 
@@ -123,7 +133,14 @@ impl CodecSpec {
     }
 
     /// Map `{population: readout_rate_hz}` to a `CommandFrame`.
-    pub fn decode(&self, pop_rates: &Map<f64>, t: f64, seq: i64, frame_id: &str, mode: Mode) -> CommandFrame {
+    pub fn decode(
+        &self,
+        pop_rates: &Map<f64>,
+        t: f64,
+        seq: i64,
+        frame_id: &str,
+        mode: Mode,
+    ) -> CommandFrame {
         let mut buffers: Map<Vec<f64>> = Map::new();
         let mut units: Map<Option<String>> = Map::new();
         for m in &self.decoder {
@@ -135,8 +152,13 @@ impl CodecSpec {
                 continue;
             }
             let rate = *pop_rates.get(&m.population).unwrap_or(&m.rate_range_hz.0);
-            let value =
-                lerp(rate, m.rate_range_hz.0, m.rate_range_hz.1, m.value_range.0, m.value_range.1);
+            let value = lerp(
+                rate,
+                m.rate_range_hz.0,
+                m.rate_range_hz.1,
+                m.value_range.0,
+                m.value_range.1,
+            );
             let buf = buffers.entry(m.command_channel.clone()).or_default();
             while buf.len() <= m.component {
                 buf.push(0.0);
@@ -151,7 +173,14 @@ impl CodecSpec {
                 (name, ChannelValue { data, unit })
             })
             .collect();
-        CommandFrame { t, seq, frame_id: frame_id.to_string(), mode, channels, ..Default::default() }
+        CommandFrame {
+            t,
+            seq,
+            frame_id: frame_id.to_string(),
+            mode,
+            channels,
+            ..Default::default()
+        }
     }
 }
 
@@ -180,5 +209,9 @@ pub fn default_uav_velocity_codec() -> CodecSpec {
             value_range: (-1.5, 1.5),
         });
     }
-    CodecSpec { codec_id: default_codec_id(), encoder: enc, decoder: dec }
+    CodecSpec {
+        codec_id: default_codec_id(),
+        encoder: enc,
+        decoder: dec,
+    }
 }

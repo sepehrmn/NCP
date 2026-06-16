@@ -39,7 +39,9 @@ int main() {
       "\"command_channel\":\"velocity_setpoint\",\"component\":0,\"unit\":\"m/s\","
       "\"rate_range_hz\":[0,200],\"value_range\":[-1.5,1.5]}]}";
   std::cout << "decode(200hz) = "
-            << take(ncp_decode_command(codec, "{\"vel_x\":200.0}", 0.0, 7)) << "\n";
+            << take(ncp_decode_command(codec, "{\"vel_x\":200.0}", 0.0, 7,
+                                       /*frame_id=*/nullptr, /*mode=*/nullptr))
+            << "\n";
 
   std::string ok = take(ncp_validate(
       "open_session",

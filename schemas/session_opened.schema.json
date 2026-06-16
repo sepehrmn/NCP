@@ -1,0 +1,123 @@
+{
+  "$defs": {
+    "SimProvenance": {
+      "properties": {
+        "network_ref": {
+          "title": "Network Ref",
+          "type": "string"
+        },
+        "backend": {
+          "title": "Backend",
+          "type": "string"
+        },
+        "seed": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Seed"
+        },
+        "calibrated_posterior": {
+          "default": false,
+          "title": "Calibrated Posterior",
+          "type": "boolean"
+        },
+        "is_simulation_output": {
+          "default": true,
+          "title": "Is Simulation Output",
+          "type": "boolean"
+        },
+        "advisory_only": {
+          "default": true,
+          "title": "Advisory Only",
+          "type": "boolean"
+        },
+        "note": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Note"
+        }
+      },
+      "required": [
+        "network_ref",
+        "backend"
+      ],
+      "title": "SimProvenance",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "ncp_version": {
+      "default": "0.1",
+      "title": "Ncp Version",
+      "type": "string"
+    },
+    "kind": {
+      "const": "session_opened",
+      "default": "session_opened",
+      "title": "Kind",
+      "type": "string"
+    },
+    "session_id": {
+      "title": "Session Id",
+      "type": "string"
+    },
+    "ok": {
+      "default": true,
+      "title": "Ok",
+      "type": "boolean"
+    },
+    "backend": {
+      "default": "mock",
+      "title": "Backend",
+      "type": "string"
+    },
+    "resolved": {
+      "additionalProperties": {
+        "type": "integer"
+      },
+      "title": "Resolved",
+      "type": "object"
+    },
+    "provenance": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/SimProvenance"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "error": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Error"
+    }
+  },
+  "required": [
+    "session_id"
+  ],
+  "title": "SessionOpened",
+  "type": "object"
+}

@@ -1,0 +1,71 @@
+{
+  "$defs": {
+    "Mode": {
+      "enum": [
+        "init",
+        "active",
+        "hold",
+        "estop"
+      ],
+      "title": "Mode",
+      "type": "string"
+    }
+  },
+  "description": "Controller -> plant / telemetry: loop health and mode.",
+  "properties": {
+    "ncp_version": {
+      "default": "0.1",
+      "title": "Ncp Version",
+      "type": "string"
+    },
+    "kind": {
+      "const": "control_status",
+      "default": "control_status",
+      "title": "Kind",
+      "type": "string"
+    },
+    "seq": {
+      "default": 0,
+      "title": "Seq",
+      "type": "integer"
+    },
+    "t": {
+      "default": 0.0,
+      "title": "T",
+      "type": "number"
+    },
+    "mode": {
+      "$ref": "#/$defs/Mode",
+      "default": "init"
+    },
+    "sim_time_ms": {
+      "default": 0.0,
+      "title": "Sim Time Ms",
+      "type": "number"
+    },
+    "loop_latency_ms": {
+      "default": 0.0,
+      "title": "Loop Latency Ms",
+      "type": "number"
+    },
+    "safety_ok": {
+      "default": true,
+      "title": "Safety Ok",
+      "type": "boolean"
+    },
+    "note": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Note"
+    }
+  },
+  "title": "ControlStatus",
+  "type": "object"
+}

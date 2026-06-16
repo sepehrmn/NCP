@@ -1,11 +1,14 @@
 [package]
 name = "ncp-core"
-description = "Neuro-Control Protocol (NCP) — pure protocol core: wire types, version guard, key scheme, rate codec, safety governor, in-process bus. The normative Rust reference."
+description = "Neuro-Cybernetic Protocol (NCP) — pure protocol core: wire types, version guard, key scheme, rate codec, safety governor, in-process bus. The normative Rust reference."
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+authors.workspace = true
 repository.workspace = true
 rust-version.workspace = true
+keywords = ["spiking-neural-network", "neurorobotics", "protocol", "nest-simulator", "robotics"]
+categories = ["science::robotics", "simulation", "api-bindings"]
 
 [dependencies]
 serde = { workspace = true }

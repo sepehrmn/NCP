@@ -1,0 +1,189 @@
+{
+  "$defs": {
+    "ChannelKind": {
+      "enum": [
+        "scalar",
+        "vec3",
+        "quat",
+        "array"
+      ],
+      "title": "ChannelKind",
+      "type": "string"
+    },
+    "ChannelSpec": {
+      "description": "Declares a named channel a controller produces or consumes.",
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/ChannelKind",
+          "default": "scalar"
+        },
+        "unit": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Unit"
+        },
+        "size": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Size"
+        },
+        "optional": {
+          "default": true,
+          "title": "Optional",
+          "type": "boolean"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Description"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "ChannelSpec",
+      "type": "object"
+    },
+    "Role": {
+      "enum": [
+        "controller",
+        "plant"
+      ],
+      "title": "Role",
+      "type": "string"
+    },
+    "SafetyLimits": {
+      "properties": {
+        "max_speed_mps": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Speed Mps"
+        },
+        "max_tilt_rad": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Tilt Rad"
+        },
+        "geofence_radius_m": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Geofence Radius M"
+        },
+        "command_timeout_ms": {
+          "default": 500.0,
+          "title": "Command Timeout Ms",
+          "type": "number"
+        }
+      },
+      "title": "SafetyLimits",
+      "type": "object"
+    }
+  },
+  "description": "Handshake: who the controller is and what it speaks.",
+  "properties": {
+    "ncp_version": {
+      "default": "0.1",
+      "title": "Ncp Version",
+      "type": "string"
+    },
+    "kind": {
+      "const": "capabilities",
+      "default": "capabilities",
+      "title": "Kind",
+      "type": "string"
+    },
+    "controller_id": {
+      "title": "Controller Id",
+      "type": "string"
+    },
+    "role": {
+      "$ref": "#/$defs/Role",
+      "default": "controller"
+    },
+    "control_rate_hz": {
+      "default": 20.0,
+      "title": "Control Rate Hz",
+      "type": "number"
+    },
+    "sensor_channels": {
+      "items": {
+        "$ref": "#/$defs/ChannelSpec"
+      },
+      "title": "Sensor Channels",
+      "type": "array"
+    },
+    "command_channels": {
+      "items": {
+        "$ref": "#/$defs/ChannelSpec"
+      },
+      "title": "Command Channels",
+      "type": "array"
+    },
+    "codec_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Codec Id"
+    },
+    "safety": {
+      "$ref": "#/$defs/SafetyLimits"
+    }
+  },
+  "required": [
+    "controller_id"
+  ],
+  "title": "Capabilities",
+  "type": "object"
+}
