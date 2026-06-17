@@ -18,9 +18,9 @@ action plane (`mode ∈ {init,active,hold,estop}`, `ttl_ms` fail-safe). It is a
 **control artifact, not a validated scientific reproduction** — output is never a
 paper-reproduction claim, and the provenance discriminators are mandatory and
 fail-closed precisely to keep that boundary machine-checkable. It is a single
-reference SDK (Rust normative; Python via PyO3, TypeScript types via ts-rs, a C ABI
-for C/C++) with a field-set-parity drift guard, not yet a multi-implementation
-program. It is **pre-1.0 and pushed without a tag**: the wire may change, minor
+reference SDK (proto-native — `proto/ncp.proto` normative, `ncp-core` the Rust
+reference implementation; Python via PyO3, TypeScript types via ts-rs, a C ABI for
+C/C++) with field-set-parity drift guards, not yet a multi-implementation program. It is **pre-1.0 and pushed without a tag**: the wire may change, minor
 versions are treated as breaking, and the version guard fails rather than silently
 coercing. NCP's contribution is a typed, provenance-first, safety-gated wire
 contract — not novel control science and not the first SNN-in-the-loop robot loop
@@ -93,16 +93,17 @@ than coercing). But it is a one-sided local guard with no integrity binding.
 
 ## P1 — Conformance: from parity test to a shared golden corpus
 
-The current `conformance.rs` checks field-set and required-array parity between
-serialized Rust messages and the vendored JSON schemas — a real drift guard, but
-Rust-only and intentionally not full validation, with no coverage of version
+`conformance.rs` checks field-set and required-array parity between serialized Rust
+messages and the JSON Schemas; `scripts/check_proto_schema_parity.py` adds the
+`proto/ncp.proto` ↔ JSON Schema side (field-set + enum wire-string parity). Real
+drift guards, but intentionally not full validation, with no coverage of version
 negotiation or the safety governor.
 
 - **Build a language-agnostic conformance corpus.** Ship golden JSON message
   fixtures plus expected outcomes for `validate()`, `check_version()`, and the
   safety-governor (`mode`/`ttl_ms`) behavior, and have the Rust, Python, TS, and C
-  peers all run against them. *Why:* this is what makes "Rust is normative" a
-  *verifiable* claim — every binding must behave identically to the spec.
+  peers all run against them. *Why:* this is what makes "`proto/ncp.proto` is
+  normative" a *verifiable* claim — every binding must behave identically to the spec.
 - **Scope it honestly.** Conformance here is implementation-vs-spec compliance, not
   interoperability (which would require multiple independent implementations
   interacting). Do not claim alignment to formal ISO/IEC 9646 / ETSI methodologies;

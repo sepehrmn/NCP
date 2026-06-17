@@ -16,13 +16,14 @@ more"). One protocol, two complementary interaction patterns:
    external actuator as "just another controller" over the system's *existing*
    transport (e.g. a robot/UAV client's MAVROS setpoint topics), non-invasively.
 
-Reference implementations:
-- **Rust (canonical / normative):** the [`ncp/`](ncp/) workspace — `ncp-core`
+Normative wire contract: `proto/ncp.proto` (proto-native; the JSON Schemas are its
+JSON projection). Reference implementations:
+- **Rust (reference implementation):** the [`ncp/`](ncp/) workspace — `ncp-core`
   (pure protocol: wire types, version guard, key scheme, rate codec, safety
   governor, in-process bus + control loop), `ncp-zenoh` (the decoupled Zenoh
   transport with per-plane QoS), and `ncp-gateway` (Engram's Rust edge — see §6A).
-  NCP is intended to become a reusable standard (cf. MCP/ACP), and Rust is the
-  high-performance reference; the crate is self-contained and extractable to its
+  NCP is intended to become a reusable standard (cf. MCP/ACP); Rust is the
+  high-performance reference implementation, self-contained and extractable to its
   own repo / crates.io. **Language bindings off the same core:** Python
   (`ncp-python`, PyO3), TypeScript (`ncp-core --features ts`, ts-rs-generated
   types), and C/C++ (`ncp-cpp`, a C ABI + `ncp.h`) — every peer is wire-identical.

@@ -53,8 +53,8 @@ Because the data planes are pub/sub, **observers attach for free**: an analysis 
 - **Four QoS planes.** Control RPC, conflating perception, express RealTime action, and a read-only observation tap — each pays only the cost its job needs.
 - **Safety-gated action plane.** A `mode` enum (`init`/`active`/`hold`/`estop`) is an explicit wire authority, backed by a latched ESTOP, `ttl_ms` HOLD fail-safe, a fail-closed command watchdog, and geofence checks.
 - **Per-frame provenance.** `is_simulation_output` and `calibrated_posterior` are mandatory, fail-closed fields — a machine-checkable epistemic discriminator on the hot path.
-- **Conformance-tested wire.** A field-set-parity drift guard checks serialized Rust messages against the vendored JSON schemas, so the Rust types and the contract cannot silently diverge.
-- **Polyglot peers.** Rust is normative; Python via PyO3, a C ABI for C/C++, and TypeScript types via ts-rs — every peer is wire-identical off the same core, so the safety/codec logic is written once, not reimplemented per language.
+- **Conformance-tested wire (proto-native).** `proto/ncp.proto` is the normative contract; two field-set-parity guards keep everything in lock-step — `conformance.rs` (Rust serde ↔ JSON Schema) and `check_proto_schema_parity.py` (proto ↔ JSON Schema) — so no representation can silently diverge.
+- **Polyglot peers.** `proto/ncp.proto` is normative; `ncp-core` is the reference implementation. Python via PyO3, a C ABI for C/C++, and TypeScript types via ts-rs — every peer is wire-identical off the same contract, so the safety/codec logic is written once, not reimplemented per language.
 
 ## Crates
 
@@ -125,7 +125,7 @@ python scripts/bench_overlap.py    # transport/compute overlap (GIL) measurement
 NCP is **pre-1.0 and experimental.** Specifically:
 
 - **The wire may change.** Minor versions are treated as breaking; the version guard fails closed rather than coercing. **Pin a version** (the `tag = "v0.1.0"` above) for anything you build against.
-- **Single reference implementation.** Rust is normative; Python/C/TS are bindings off the same core, verified by a field-set-parity drift guard — not yet a multi-implementation conformance program.
+- **Single reference implementation.** `proto/ncp.proto` is the normative contract; `ncp-core` (Rust) is the reference implementation and Python/C/TS are bindings off the same contract, verified by field-set-parity drift guards — not yet a multi-implementation conformance program.
 - **The action plane is currently unauthenticated.** On an open realm it is effectively world-writable: anyone who can reach the realm can publish commands. The local `mode`/`ttl_ms` governor is defense-in-depth, **not** network security. Deploy only on a trusted, closed realm. See [`SECURITY.md`](SECURITY.md) and the P0 work in [`ROADMAP.md`](ROADMAP.md).
 
 ## Citing

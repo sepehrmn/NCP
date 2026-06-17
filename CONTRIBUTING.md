@@ -81,8 +81,9 @@ cargo clippy --workspace --all-targets -- -D warnings   # zero warnings
 cargo test -p ncp-core            # the wire conformance test MUST pass
 ```
 
-The **conformance test** (`ncp-core/tests/conformance.rs`) pins the
-on-the-wire contract against the vendored spec, `.proto`, and JSON schemas. If it
+Two **conformance guards** keep the wire in lock-step: `ncp-core/tests/conformance.rs`
+(Rust serde ↔ JSON Schema) and `scripts/check_proto_schema_parity.py`
+(`proto/ncp.proto` ↔ JSON Schema — field-set + enum wire-string parity). If either
 fails, the wire has drifted — fix the drift, do not weaken the test.
 
 ## The wire rule (NON-NEGOTIABLE)
