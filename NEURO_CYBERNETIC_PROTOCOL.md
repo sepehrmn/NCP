@@ -218,6 +218,20 @@ action plane is the only one with command authority (`ttl_ms`, `Mode.HOLD`/
 `seq`, not arrival time** (the DROP QoS on the perception plane makes arrival-time
 pairing unsound).
 
+NCP's per-plane QoS is **not invented** — it maps onto the standard ROS 2 / DDS
+QoS vocabulary, so a `rmw_zenoh` / DDS deployment can express the same contract:
+
+| NCP plane | Reliability | History | NCP safety field | ROS 2 / DDS equivalent |
+|---|---|---|---|---|
+| perception (sensor) | best-effort (DROP) | keep-last(1) (conflate) | — | `BEST_EFFORT` + `KEEP_LAST(1)` |
+| action (command) | best-effort, express, RealTime | keep-last | `ttl_ms` | **`LIFESPAN`** (≡ `ttl_ms`) + `DEADLINE` for staleness |
+| control RPC / observation | reliable (BLOCK) | keep-all | — | `RELIABLE` |
+| liveness / fail-safe | — | — | `Mode.HOLD`/`ESTOP`, `command_timeout_ms` | `LIVELINESS` + `DEADLINE` watchdog |
+
+`ttl_ms` **is** DDS `LIFESPAN`; the genuinely NCP-specific part is only the `mode`
+enum as an explicit wire authority. Mapping to these names keeps NCP interoperable
+with a ROS 2/DDS stack rather than diverging from it.
+
 **Engram's gateway (`ncp-gateway`).** Engram's brain is NEST (Python), so its NCP
 *server* stays Python. The gateway gives Engram a production-grade Rust Zenoh edge
 — it runs the `{realm}/rpc` queryable and the pub/sub planes and forwards each RPC
