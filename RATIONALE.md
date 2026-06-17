@@ -251,7 +251,11 @@ open bus" admission are in genuine tension until auth + a conformance suite ship
 wire vocabulary** for record (V_m/spikes/rate) and stimulus (current_pA/rate_hz/
 spike_times/weight_set) against named populations. *Disadvantage:* the *underlying
 record/stimulus modeling is MUSIC/NRP prior art*, not novel; it is NEST-shaped
-today, and the "simulator-agnostic" ambition is untested. (So: NCP-only as a *wire
+today, and the "simulator-agnostic" ambition is untested *as shipped* — though it
+is agnostic *by design*: the typed enums are abstract SNN concepts each backend
+maps, with simulator-specifics confined to the backend + the `recordables`/`params`
+escape hatches, at **zero NEST cost** (see `ROADMAP.md` "Future direction:
+simulator-agnosticism"). A second backend is the test. (So: NCP-only as a *wire
 vocabulary*, not as a concept.)
 
 **8. Observability & analysis.** *Advantage:* an analysis/observer client's `ncp-observer` subscribes

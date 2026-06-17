@@ -17,7 +17,10 @@ more"). One protocol, two complementary interaction patterns:
    transport (e.g. a robot/UAV client's MAVROS setpoint topics), non-invasively.
 
 Normative wire contract: `proto/ncp.proto` (proto-native; the JSON Schemas are its
-JSON projection). Reference implementations:
+JSON projection). The wire is **simulator-agnostic** — the typed record/stimulus
+vocabulary are abstract SNN concepts a `SimulationBackend` maps to its simulator
+(NEST today; NEURON/Brian2/GeNN are a future *backend*, no wire change — see
+[`ROADMAP.md`](ROADMAP.md)). Reference implementations:
 - **Rust (reference implementation):** the [`ncp/`](ncp/) workspace — `ncp-core`
   (pure protocol: wire types, version guard, key scheme, rate codec, safety
   governor, in-process bus + control loop), `ncp-zenoh` (the decoupled Zenoh
