@@ -1,6 +1,6 @@
 # NCP — Neuro-Cybernetic Protocol
 
-> A safety-gated, provenance-first wire protocol for a spiking neural simulation to perceive and act through robots, UAVs, and analysis clients.
+> A single versioned, typed, cross-language **wire contract** for a running NEST point- and rate-neuron simulation (spiking, binary, and rate-based models) to perceive and act through robots, UAVs, and analysis clients — safety-gated and provenance-first.
 
 [![CI](https://github.com/sepehrmn/NCP/actions/workflows/ci.yml/badge.svg)](https://github.com/sepehrmn/NCP/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
@@ -12,7 +12,7 @@
 
 ## What is NCP
 
-NCP is a versioned, transport-agnostic wire contract that lets a running NEST spiking neural network serve external robot, UAV, and analysis clients — for **perception, action, both, or neither** — over QoS-differentiated planes with a safety-gated action plane and scientific provenance on every frame. The reference implementation is a Rust SDK with Python, C/C++, and TypeScript peers that all speak the identical wire.
+NCP is a versioned, transport-agnostic wire contract that lets a running NEST network — point neurons (spiking, binary) and rate-based models — serve external robot, UAV, and analysis clients — for **perception, action, both, or neither** — over QoS-differentiated planes with a safety-gated action plane and scientific provenance on every frame. The reference implementation is a Rust SDK with Python, C/C++, and TypeScript peers that all speak the identical wire.
 
 **Honesty boundary (binding):** returned `V_m`/spikes are raw simulation outputs of a specified model, never a validated reproduction. Every frame carries `is_simulation_output=true` and `calibrated_posterior=false`. A neuro-controller is a **control artifact**, never a paper-reproduction claim.
 
@@ -23,7 +23,7 @@ One commander (an Engram/NEST brain) coordinates one or more bodies over four Qo
 ```mermaid
 flowchart LR
     subgraph Commander["Commander — Engram / NEST brain"]
-        BRAIN["spiking network<br/>(perception · action · both · neither)"]
+        BRAIN["neural network · point + rate<br/>(perception · action · both · neither)"]
     end
 
     subgraph Bodies["Bodies & clients"]
@@ -53,8 +53,8 @@ Because the data planes are pub/sub, **observers attach for free**: an analysis 
 - **Four QoS planes.** Control RPC, conflating perception, express RealTime action, and a read-only observation tap — each pays only the cost its job needs.
 - **Safety-gated action plane.** A `mode` enum (`init`/`active`/`hold`/`estop`) is an explicit wire authority, backed by a latched ESTOP, `ttl_ms` HOLD fail-safe, a fail-closed command watchdog, and geofence checks.
 - **Per-frame provenance.** `is_simulation_output` and `calibrated_posterior` are mandatory, fail-closed fields — a machine-checkable epistemic discriminator on the hot path.
-- **Conformance-tested wire.** A field-set-parity drift guard checks serialized Rust messages against the vendored JSON schemas, so the Rust types and the contract cannot silently diverge.
-- **Polyglot peers.** Rust is normative; Python via PyO3, a C ABI for C/C++, and TypeScript types via ts-rs — every peer is wire-identical off the same core, so the safety/codec logic is written once, not reimplemented per language.
+- **Conformance-tested wire (proto-native).** `proto/ncp.proto` is the normative contract; two field-set-parity guards keep everything in lock-step — `conformance.rs` (Rust serde ↔ JSON Schema) and `check_proto_schema_parity.py` (proto ↔ JSON Schema) — so no representation can silently diverge.
+- **Polyglot peers.** `proto/ncp.proto` is normative; `ncp-core` is the reference implementation. Python via PyO3, a C ABI for C/C++, and TypeScript types via ts-rs — every peer is wire-identical off the same contract, so the safety/codec logic is written once, not reimplemented per language.
 
 ## Crates
 
@@ -99,7 +99,7 @@ assert!(check_version(NCP_VERSION, true)?);     // exact match -> Ok(true)
 assert!(check_version("0.9", true).is_err());   // 0.x minor diff -> rejected
 ```
 
-- **Spec:** [`NEURO_CYBERNETIC_PROTOCOL.md`](NEURO_CYBERNETIC_PROTOCOL.md) is the human-readable source of truth; the JSON Schemas in [`schemas/`](schemas/) are the de-facto payload contract.
+- **Spec:** [`proto/ncp.proto`](proto/ncp.proto) is the normative wire contract (proto-native — bindings and JSON Schemas generate from / conform to it via buf); [`NEURO_CYBERNETIC_PROTOCOL.md`](NEURO_CYBERNETIC_PROTOCOL.md) is the human-readable spec, and the JSON Schemas in [`schemas/`](schemas/) are its JSON projection.
 - **Conformance + benchmarks:**
 
 ```bash
@@ -125,7 +125,7 @@ python scripts/bench_overlap.py    # transport/compute overlap (GIL) measurement
 NCP is **pre-1.0 and experimental.** Specifically:
 
 - **The wire may change.** Minor versions are treated as breaking; the version guard fails closed rather than coercing. **Pin a version** (the `tag = "v0.1.0"` above) for anything you build against.
-- **Single reference implementation.** Rust is normative; Python/C/TS are bindings off the same core, verified by a field-set-parity drift guard — not yet a multi-implementation conformance program.
+- **Single reference implementation.** `proto/ncp.proto` is the normative contract; `ncp-core` (Rust) is the reference implementation and Python/C/TS are bindings off the same contract, verified by field-set-parity drift guards — not yet a multi-implementation conformance program.
 - **The action plane is currently unauthenticated.** On an open realm it is effectively world-writable: anyone who can reach the realm can publish commands. The local `mode`/`ttl_ms` governor is defense-in-depth, **not** network security. Deploy only on a trusted, closed realm. See [`SECURITY.md`](SECURITY.md) and the P0 work in [`ROADMAP.md`](ROADMAP.md).
 
 ## Citing

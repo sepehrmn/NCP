@@ -1,7 +1,7 @@
 # Integrating NCP into a new project
 
 NCP is designed so adopting it is **simple and minimally invasive** — and, for the
-"a NEST spiking network served live to external clients" use case, better than the
+"a NEST point/rate neural network served live to external clients" use case, better than the
 alternatives (the honest comparison, including where it is *not*, is in
 [`RATIONALE.md`](RATIONALE.md)).
 
@@ -70,7 +70,7 @@ validation) comes from the one Rust core, so all peers are wire-identical.
 | 2 | **Computational neuroscientist** | live data from a *running* NEST kernel (persistent `Prepare`/`Run`), V_m/spikes/rate, stimulus injection | "is it real-time like MUSIC?" → **answered** ([`NEST_REALTIME.md`](NEST_REALTIME.md)); multi-sim coupling → use MUSIC (out of scope, documented) |
 | 3 | **RL researcher** | Gym-like `open`/`step`/`run` over the wire, record/stimulus specs | per-session capability *negotiation* endpoint → partial (`/api/neurocontrol/info` lists backends/messages; richer handshake is roadmap) |
 | 4 | **Data scientist / analyst** | read-only observer tap, PyO3 module, `(V,L,D,A)` mapping | exact stream alignment → **added** (`ObservationFrame.seq`; observer joins D on `seq`) |
-| 5 | **TypeScript / frontend dev** | wire-correct types generated from Rust (ts-rs) | browser transport → WS/Tauri (Zenoh is native, no WASM transport — types-from-Rust is the unification; documented) |
+| 5 | **TypeScript / frontend dev** | wire-correct types conforming to `proto/ncp.proto` (today via ts-rs from `ncp-core`; buf/ts-proto is the migration target) | browser transport → WS/Tauri (Zenoh is native, no WASM transport — the typed contract is the unification; documented) |
 | 6 | **C++ / systems dev** | native integration | a C/C++ binding → **added** (`ncp-cpp` C ABI + `ncp.h`, compile-and-run verified) |
 | 7 | **Embedded / MCU dev** | the JSON/proto wire is small | `no_std` core + a tiny transport (zenoh-pico / micro-ROS) → **gap / roadmap** (today `ncp-core` is `std`+serde; Zenoh is heavy) |
 | 8 | **Security engineer** | per-plane keys, scoped read taps | **auth/ACL on the action plane** → **open risk** (the command key is world-writable on an open bus; enable Zenoh access-control/TLS via config; top priority, needs a deployment policy) |

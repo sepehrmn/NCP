@@ -1,0 +1,14 @@
+{
+  "ncp_version": "0.1",
+  "kind": "observation_frame",
+  "session_id": "vec-open-1",
+  "seq": 7,
+  "t": 1.0,
+  "sim_time_ms": 10.0,
+  "records": {
+    "vm": { "port": "vm", "target": "feat", "observable": "V_m", "times": [1.0], "values": [-65.0], "senders": [], "unit": "mV" },
+    "gex": { "port": "vm", "target": "feat", "observable": "V_m", "recordable": "g_ex", "times": [1.0], "values": [2.5], "unit": "nS" }
+  },
+  "calibrated_posterior": false,
+  "is_simulation_output": true
+}

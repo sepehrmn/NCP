@@ -120,7 +120,8 @@
         "spikes",
         "V_m",
         "rate",
-        "weight"
+        "weight",
+        "binary_state"
       ],
       "title": "Observable",
       "type": "string"
@@ -163,6 +164,13 @@
           "default": 1.0,
           "title": "Cadence Ms",
           "type": "number"
+        },
+        "recordables": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Recordables",
+          "type": "array"
         }
       },
       "required": [
@@ -229,7 +237,8 @@
         "current_pA",
         "rate_hz",
         "spike_times",
-        "weight_set"
+        "weight_set",
+        "rate_inject"
       ],
       "title": "StimulusKind",
       "type": "string"
@@ -267,6 +276,13 @@
           },
           "title": "Ids",
           "type": "array"
+        },
+        "params": {
+          "additionalProperties": {
+            "type": "number"
+          },
+          "title": "Params",
+          "type": "object"
         }
       },
       "required": [

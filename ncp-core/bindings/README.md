@@ -1,9 +1,11 @@
 # NCP TypeScript types (generated)
 
-These `*.ts` files are the **canonical NCP message types for TypeScript**,
+These `*.ts` files are the **NCP message types for TypeScript**, currently
 **generated from the Rust `ncp-core` types** via [ts-rs](https://github.com/Aleph-Alpha/ts-rs).
-Rust is the single source of truth; TS, Python and Rust peers are therefore
-wire-identical.
+The normative wire contract is `proto/ncp.proto` (proto-native); `ncp-core` is its
+reference implementation, so these types are wire-identical to the Rust, Python and
+proto peers. (Migration target: generate directly from `proto/ncp.proto` via buf —
+see `buf.gen.yaml`.)
 
 Do **not** edit by hand. Regenerate after changing the Rust types:
 

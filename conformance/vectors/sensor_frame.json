@@ -1,0 +1,8 @@
+{
+  "ncp_version": "0.1",
+  "kind": "sensor_frame",
+  "seq": 7,
+  "t": 1.0,
+  "frame_id": "world",
+  "channels": { "pose_error": { "data": [0.0, 0.0, 0.0], "unit": "m" } }
+}

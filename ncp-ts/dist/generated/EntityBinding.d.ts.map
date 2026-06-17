@@ -1,0 +1,1 @@
+{"version":3,"file":"EntityBinding.d.ts","sourceRoot":"","sources":["../../src/generated/EntityBinding.ts"],"names":[],"mappings":"AACA,OAAO,KAAK,EAAE,SAAS,EAAE,MAAM,aAAa,CAAC;AAE7C;;GAEG;AACH,MAAM,MAAM,aAAa,GAAG;IAAE,MAAM,EAAE,SAAS,CAAC;IAAC,IAAI,EAAE,MAAM,CAAC;IAC9D;;OAEG;IACH,SAAS,EAAE,MAAM,CAAC;CAAE,CAAC"}

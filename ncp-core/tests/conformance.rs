@@ -227,6 +227,7 @@ fn open_session_nested_structs_serialize_full_keys() {
                 observable: Observable::Spikes,
                 ids: vec![1, 2, 3],
                 cadence_ms: 2.0,
+                recordables: Vec::new(),
             }],
         },
         stimulus: StimulusSpec {
@@ -235,6 +236,7 @@ fn open_session_nested_structs_serialize_full_keys() {
                 target: "feat".into(),
                 kind: StimulusKind::CurrentPa,
                 ids: vec![1],
+                params: Default::default(),
             }],
         },
         ..Default::default()

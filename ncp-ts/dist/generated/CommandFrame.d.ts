@@ -1,0 +1,30 @@
+import type { ChannelValue } from "./ChannelValue";
+import type { Mode } from "./Mode";
+/**
+ * Controller → plant: the proposed actuation, with `mode`/`ttl_ms` safety
+ * metadata. `seq` should echo the originating `SensorFrame.seq`.
+ */
+export type CommandFrame = {
+    ncp_version: string;
+    kind: string;
+    seq: bigint;
+    t: number;
+    frame_id: string;
+    mode: Mode;
+    ttl_ms: number;
+    channels: {
+        [key in string]: ChannelValue;
+    };
+    /**
+     * Packetized predictive control: future setpoints. `channels` is tick 0;
+     * `horizon[i]` applies at tick i+1, spaced `horizon_dt_ms` apart. The
+     * actuator replays these through dropouts (see `ActionBuffer`), bounded by
+     * `ttl_ms`. Empty = legacy single-step command. Backward compatible: a
+     * consumer that ignores `horizon` still reads `channels` (tick 0).
+     */
+    horizon: Array<{
+        [key in string]: ChannelValue;
+    }>;
+    horizon_dt_ms: number | null;
+};
+//# sourceMappingURL=CommandFrame.d.ts.map

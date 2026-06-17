@@ -11,16 +11,16 @@
 ## Status: what NCP v0.x is, and is not
 
 NCP v0.x is a versioned, transport-agnostic wire contract that serves a running
-NEST spiking neural network to external robot/UAV/analysis clients over
+NEST point- and rate-neuron network to external robot/UAV/analysis clients over
 QoS-differentiated Zenoh planes, with scientific provenance baked into every frame
 (`is_simulation_output=true`, `calibrated_posterior=false`) and a safety-gated
 action plane (`mode ∈ {init,active,hold,estop}`, `ttl_ms` fail-safe). It is a
 **control artifact, not a validated scientific reproduction** — output is never a
 paper-reproduction claim, and the provenance discriminators are mandatory and
 fail-closed precisely to keep that boundary machine-checkable. It is a single
-reference SDK (Rust normative; Python via PyO3, TypeScript types via ts-rs, a C ABI
-for C/C++) with a field-set-parity drift guard, not yet a multi-implementation
-program. It is **pre-1.0 and pushed without a tag**: the wire may change, minor
+reference SDK (proto-native — `proto/ncp.proto` normative, `ncp-core` the Rust
+reference implementation; Python via PyO3, TypeScript types via ts-rs, a C ABI for
+C/C++) with field-set-parity drift guards, not yet a multi-implementation program. It is **pre-1.0 and pushed without a tag**: the wire may change, minor
 versions are treated as breaking, and the version guard fails rather than silently
 coercing. NCP's contribution is a typed, provenance-first, safety-gated wire
 contract — not novel control science and not the first SNN-in-the-loop robot loop
@@ -93,16 +93,17 @@ than coercing). But it is a one-sided local guard with no integrity binding.
 
 ## P1 — Conformance: from parity test to a shared golden corpus
 
-The current `conformance.rs` checks field-set and required-array parity between
-serialized Rust messages and the vendored JSON schemas — a real drift guard, but
-Rust-only and intentionally not full validation, with no coverage of version
+`conformance.rs` checks field-set and required-array parity between serialized Rust
+messages and the JSON Schemas; `scripts/check_proto_schema_parity.py` adds the
+`proto/ncp.proto` ↔ JSON Schema side (field-set + enum wire-string parity). Real
+drift guards, but intentionally not full validation, with no coverage of version
 negotiation or the safety governor.
 
 - **Build a language-agnostic conformance corpus.** Ship golden JSON message
   fixtures plus expected outcomes for `validate()`, `check_version()`, and the
   safety-governor (`mode`/`ttl_ms`) behavior, and have the Rust, Python, TS, and C
-  peers all run against them. *Why:* this is what makes "Rust is normative" a
-  *verifiable* claim — every binding must behave identically to the spec.
+  peers all run against them. *Why:* this is what makes "`proto/ncp.proto` is
+  normative" a *verifiable* claim — every binding must behave identically to the spec.
 - **Scope it honestly.** Conformance here is implementation-vs-spec compliance, not
   interoperability (which would require multiple independent implementations
   interacting). Do not claim alignment to formal ISO/IEC 9646 / ETSI methodologies;
@@ -220,6 +221,45 @@ mitigations. Full numbers + method in [`NEST_REALTIME.md`](NEST_REALTIME.md) and
   one. (Expose it; do not hard-code — the right value is hardware-dependent.)
 
 ---
+
+## Future direction: simulator-agnosticism (a second backend)
+
+NCP's wire is **simulator-agnostic by design, NEST-implemented in fact.** The
+typed record/stimulus vocabulary (`V_m`, `spikes`, `rate`, `weight`, `current_pA`,
+`rate_hz`, `spike_times`) are abstract spiking-network concepts, **not** NEST APIs;
+each `SimulationBackend` maps them to its simulator (NEST `V_m` ↔ NEURON `v`,
+`current_pA` ↔ NEURON `IClamp`, `spikes` ↔ NEURON `NetCon`). The simulator-specific
+long tail — model recordables (`g_ex`, `S`), connection params (siegert
+`drift_factor`/`diffusion_factor`) — rides the generic `recordables[]` / `params{}`
+escape hatches (#10), which the backend resolves. The only NEST-shaped leakage is
+in free strings the backend owns, not the typed wire.
+
+**This costs the NEST path nothing.** Adding a NEURON / Brian2 / GeNN /
+neuromorphic backend is a *new `SimulationBackend` implementation* (the seam is
+Engram's `backend/neurocontrol/backends.py`), **not a wire change** — it cannot
+slow or degrade NEST. NEST is the reference and only implemented backend today, so
+simulator-agnosticism is a **designed property, not yet a shipped one**: no second
+backend exists. When one lands, the points to abstract are `NetworkRefKind::Builtin`
+(a NEST model name) and the recordable-string conventions, and the `VERSIONING.md`
+promotion rule applies (a recordable common across simulators graduates to a typed
+enum variant, additively).
+
+## #10 neuron-family coverage & the v0.2 release
+
+`#10` (landed; reference backend verified on NEST 3.9) extended the wire
+**additively**: `Observable.binary_state`, `StimulusKind.rate_inject`,
+`RecordTarget.recordables`, `Observation.recordable`, `StimulusTarget.params` —
+covering conductance (`g_ex`/`g_in`/`w`), rate models, and binary state via a
+generic named-recordable + named-param mechanism, with NEST
+`multimeter`/`step_rate_generator`/`spin_detector` wiring in Engram. **Remaining:**
+niche driving (binary `noise_generator`, siegert `diffusion_connection`) needs a
+driver-neuron topology; the observer-side `seq` D-alignment in `pid_vla`; and a
+**coordinated v0.2 release** — bump `NCP_VERSION` 0.1→0.2 so the version guard fires
+on the new enum values (an old consumer otherwise *silently drops* any frame
+carrying `binary_state`/`rate_inject` — the enums have no `serde(other)` fallback),
+cut tag `v0.2.0`, optionally add `#[serde(other)]` for graceful degradation, and
+re-pin `pid_vla` + `crebain` Rust (`tag=v0.1.0`→`v0.2.0`) plus `bun install` for
+crebain's TS. Mandatory before Engram emits any `#10` value.
 
 ## Honest positioning
 

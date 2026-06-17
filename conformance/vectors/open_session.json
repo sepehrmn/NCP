@@ -1,0 +1,19 @@
+{
+  "ncp_version": "0.1",
+  "kind": "open_session",
+  "session_id": "vec-open-1",
+  "network": { "kind": "builtin", "ref": "iaf_cond_exp", "population_sizes": { "feat": 4 } },
+  "record": {
+    "targets": [
+      { "port": "vm", "target": "feat", "observable": "V_m", "recordables": ["g_ex", "g_in"] },
+      { "port": "bin", "target": "feat", "observable": "binary_state" }
+    ]
+  },
+  "stimulus": {
+    "targets": [
+      { "port": "drive", "target": "feat", "kind": "rate_inject", "params": { "drift_factor": 1.0, "diffusion_factor": 0.5 } }
+    ]
+  },
+  "sim": { "dt_ms": 0.1, "chunk_ms": 10.0, "mode": "stream" },
+  "bindings": []
+}

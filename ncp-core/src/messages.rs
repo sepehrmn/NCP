@@ -47,6 +47,9 @@ pub enum Observable {
     Rate,
     #[serde(rename = "weight")]
     Weight,
+    /// Binary / multi-state neurons: discrete state via spin_detector, not V_m. (#10)
+    #[serde(rename = "binary_state")]
+    BinaryState,
 }
 
 /// How a stimulus drives a target.
@@ -62,6 +65,10 @@ pub enum StimulusKind {
     SpikeTimes,
     #[serde(rename = "weight_set")]
     WeightSet,
+    /// Continuous-rate injection for rate-based neurons (rate connections /
+    /// step_rate_generator); rate models cannot receive spikes. (#10)
+    #[serde(rename = "rate_inject")]
+    RateInject,
 }
 
 /// What kind of network reference `NetworkRef.ref` is.
@@ -261,6 +268,10 @@ pub struct RecordTarget {
     pub observable: Observable,
     pub ids: Vec<i64>,
     pub cadence_ms: f64,
+    /// Generic named multimeter recordables (model-specific: e.g. `g_ex`/`g_in`
+    /// for conductance models, `w` for aeif, `rate` for rate models). Empty =
+    /// just `observable`. Resolved via NEST multimeter `record_from`. (#10)
+    pub recordables: Vec<String>,
 }
 
 impl Default for RecordTarget {
@@ -271,6 +282,7 @@ impl Default for RecordTarget {
             observable: Observable::Vm,
             ids: Vec::new(),
             cadence_ms: 1.0,
+            recordables: Vec::new(),
         }
     }
 }
@@ -291,6 +303,9 @@ pub struct StimulusTarget {
     pub target: String,
     pub kind: StimulusKind,
     pub ids: Vec<i64>,
+    /// Named stimulus parameters beyond the scalar value, e.g. siegert_neuron's
+    /// diffusion_connection `drift_factor` / `diffusion_factor`. (#10)
+    pub params: Map<f64>,
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, Debug, Default)]
@@ -479,6 +494,9 @@ pub struct Observation {
     pub values: Vec<f64>,
     pub senders: Vec<i64>,
     pub unit: Option<String>,
+    /// Which named recordable this series carries (e.g. `g_ex`, `w`) when a port
+    /// records more than the primary `observable`; `None` = the `observable`. (#10)
+    pub recordable: Option<String>,
 }
 
 /// The returned neural data, keyed by record port.

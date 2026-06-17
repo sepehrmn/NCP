@@ -12,18 +12,22 @@ Be kind. All participation is governed by our
 
 ## Repository layout
 
-NCP is a Rust workspace. Rust is the normative reference; other languages are
-bindings generated from or built on top of `ncp-core`.
+NCP is proto-native: `proto/ncp.proto` is the normative wire contract — the
+single source of truth for message structure and the binary encoding. The JSON
+Schemas, the Rust/Python/TS/C++ bindings, and `ncp-core`'s serde types generate
+from or are conformance-checked against it (via buf; parity guarded in CI).
+`ncp-core` is the reference implementation — it owns BEHAVIOR (codec, safety
+governor, keys, version).
 
 | Crate / dir   | What it is                                                            |
 | ------------- | -------------------------------------------------------------------- |
-| `ncp-core`    | Pure, transport-agnostic protocol: wire types, codec, safety governor, control loop, keys. The source of truth. |
+| `ncp-core`    | Pure, transport-agnostic protocol: wire types, codec, safety governor, control loop, keys. The reference implementation (behavior). |
 | `ncp-zenoh`   | Zenoh transport: queryable RPC + the three QoS-differentiated pub/sub planes. |
 | `ncp-gateway` | Rust edge → Python bridge.                                           |
 | `ncp-python`  | PyO3 Python bindings.                                                |
 | `ncp-cpp`     | C ABI + cbindgen header for C/C++ consumers.                         |
-| `proto/`      | Vendored `.proto` definitions.                                       |
-| `schemas/`    | Vendored JSON Schemas.                                               |
+| `proto/`      | `ncp.proto` — the normative wire contract (proto-native source of truth).    |
+| `schemas/`    | JSON Schemas — the JSON projection of `proto/ncp.proto` (parity-guarded).     |
 | `NEURO_CYBERNETIC_PROTOCOL.md` | The protocol specification.                        |
 
 ## Building and testing
@@ -77,8 +81,9 @@ cargo clippy --workspace --all-targets -- -D warnings   # zero warnings
 cargo test -p ncp-core            # the wire conformance test MUST pass
 ```
 
-The **conformance test** (`ncp-core/tests/conformance.rs`) pins the
-on-the-wire contract against the vendored spec, `.proto`, and JSON schemas. If it
+Two **conformance guards** keep the wire in lock-step: `ncp-core/tests/conformance.rs`
+(Rust serde ↔ JSON Schema) and `scripts/check_proto_schema_parity.py`
+(`proto/ncp.proto` ↔ JSON Schema — field-set + enum wire-string parity). If either
 fails, the wire has drifted — fix the drift, do not weaken the test.
 
 ## The wire rule (NON-NEGOTIABLE)

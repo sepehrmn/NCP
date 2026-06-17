@@ -1,25 +1,37 @@
-// Neuro-Cybernetic Protocol (NCP) v0.1 — protobuf IDL.
+// Neuro-Cybernetic Protocol (NCP) v0.1 — protobuf IDL. THE NORMATIVE WIRE CONTRACT.
 //
-// NON-NORMATIVE MIRROR. This `.proto` is a convenience mirror of the NCP wire
-// contract for teams that prefer a protobuf/gRPC transport; it is NOT the
-// canonical source. The de-facto contract is the JSON wire, as defined by:
+// proto-native: this `.proto` is the single source of truth for the NCP wire —
+// message structure, field numbers, types, and the binary encoding. Every other
+// representation is generated FROM it or conformance-checked AGAINST it:
 //
-//   - the Rust serde reference types in `ncp-core/src/messages.rs`, and
-//   - the JSON Schemas in `schemas/` that are generated from the reference types.
+//   - language bindings (Rust/prost, TS/ts-proto, Python, C++) — generated via
+//     buf (`buf.yaml` / `buf.gen.yaml`),
+//   - the JSON Schemas in `schemas/*.schema.json` — the JSON projection (incl. the
+//     enum *wire strings* "V_m", "current_pA", …), kept in parity with this file,
+//   - the Rust serde types in `ncp-core/src/messages.rs` — the reference impl.
 //
-// When this file and the JSON Schemas / Rust types disagree, the JSON Schemas
-// (and the Rust types they are generated from) win. No codegen consumes this
-// file — it is hand-maintained documentation of the binary-transport shape, and
-// must be reconciled to the JSON contract whenever the reference types change.
+// `ncp-core` owns BEHAVIOR (codec, safety governor, keys, version), not the wire.
+// Parity is CI-enforced while the codegen migrates to fully proto-native:
+//   - `scripts/check_proto_schema_parity.py` — this `.proto` <-> JSON Schema
+//     (field-set + enum wire-string parity); run it after editing this file,
+//   - `ncp-core/tests/conformance.rs`        — Rust serde <-> JSON Schema.
 //
-// Wire conventions mirrored from the JSON contract:
+// IMPORTANT — ProtoJSON is NOT the NCP JSON wire for enums. Canonical protobuf
+// JSON emits an enum's *constant name* ("V_M"); the NCP JSON wire uses the string
+// in `schemas/` ("V_m"). Each proto enum value annotates its JSON wire string as
+// `// wire string "..."`, and a protobuf-JSON peer MUST map enums through that
+// table. Binary peers use the field number and are unaffected.
+//
+// Wire conventions:
 //   - every message carries a `kind` string discriminator and an `ncp_version`
 //     string ("0.1"); receivers check the *major* of `ncp_version` only,
-//   - enum values on the JSON wire are the string forms ("V_m", "spike_times",
-//     …); the proto enums below are a typed convenience — the canonical wire
-//     value is the string in `schemas/`,
-//   - integer fields (ids, sizes, seq, seed) are int64 to match the Rust `i64`
-//     reference types and the JSON `"integer"` schema type,
+//   - integer fields (ids, sizes, seq, seed) are int64, matching the Rust `i64`
+//     types and the JSON `"integer"` schema type; the JSON projection emits them
+//     as JSON numbers (a deliberate, human-readable deviation from ProtoJSON,
+//     which emits int64 as strings), so values above 2^53 lose precision in a
+//     binary64/JS consumer — bounded fields (ids/seq/counters) are safe, `seed`
+//     is range-guarded by the client, and the full ProtoJSON-canonical
+//     int64-as-strings migration is tracked in sepehrmn/NCP#5,
 //   - `record`/`stimulus` on OpenSession are NESTED specs (RecordSpec /
 //     StimulusSpec), each wrapping a repeated list of targets,
 //   - unknown fields are ignored on deserialize (forward compatible within a
@@ -27,9 +39,11 @@
 //
 // NCP is transport-agnostic. The recommended *decoupled* default is **Zenoh**
 // (these messages as payloads over a data-centric pub/sub + queryable bus — no
-// client bound to a server address). The same messages ride WebSocket/JSON (the
-// shipped, zero-friction fallback) and, optionally, the `NeuroSim` gRPC service
-// below for point-to-point deployments. Choose the medium per deployment; the
+// client bound to a server address); the same messages ride WebSocket/JSON (the
+// shipped, zero-friction fallback). The `NeuroSim` gRPC service below is an
+// OPTIONAL point-to-point binding for the rare session-lifecycle RPC only — never
+// the per-tick data plane (HTTP/2/TCP is unfit for the hot action loop; see
+// RATIONALE.md and PERFORMANCE.md). Choose the medium per deployment; the
 // contract is one.
 
 syntax = "proto3";
@@ -49,6 +63,7 @@ enum Observable {
   SPIKES = 2;                 // wire string "spikes"
   RATE = 3;                   // wire string "rate"
   WEIGHT = 4;                 // wire string "weight"
+  BINARY_STATE = 5;           // wire string "binary_state" — spin_detector (binary neurons)
 }
 
 enum StimulusKind {
@@ -57,14 +72,15 @@ enum StimulusKind {
   RATE_HZ = 2;                // wire string "rate_hz"
   SPIKE_TIMES = 3;            // wire string "spike_times"
   WEIGHT_SET = 4;             // wire string "weight_set"
+  RATE_INJECT = 5;            // wire string "rate_inject" — continuous-rate drive (rate neurons)
 }
 
 enum NetworkRefKind {
   NETWORK_REF_KIND_UNSPECIFIED = 0;
-  HANDLE = 1;     // backend-issued pynest_script_id / compiled_module_id
-  BUILTIN = 2;    // NEST built-in neuron model name
-  MODEL_ID = 3;   // Engram KG / paper-derived model id
-  SPEC = 4;
+  HANDLE = 1;     // wire string "handle" — backend-issued pynest_script_id / compiled_module_id
+  BUILTIN = 2;    // wire string "builtin" — NEST built-in neuron model name
+  MODEL_ID = 3;   // wire string "model_id" — Engram KG / paper-derived model id
+  SPEC = 4;       // wire string "spec"
 }
 
 enum EntityRole {
@@ -75,7 +91,7 @@ enum EntityRole {
   ACTUATOR = 4;               // wire string "actuator"
 }
 
-enum ChannelKindEnum {
+enum ChannelKind {
   CHANNEL_KIND_UNSPECIFIED = 0;
   SCALAR = 1;                 // wire string "scalar"
   VEC3 = 2;                   // wire string "vec3"
@@ -127,6 +143,7 @@ message RecordTarget {
   Observable observable = 3;
   repeated int64 ids = 4;      // empty = all
   double cadence_ms = 5;
+  repeated string recordables = 6;  // generic named multimeter recordables (g_ex, g_in, w, rate, …)
 }
 
 // Nested spec wrapper (matches the JSON: record.targets / stimulus.targets).
@@ -139,6 +156,7 @@ message StimulusTarget {
   string target = 2;
   StimulusKind kind = 3;
   repeated int64 ids = 4;
+  map<string, double> params = 5;  // named params (e.g. siegert drift_factor / diffusion_factor)
 }
 
 message StimulusSpec {
@@ -219,6 +237,10 @@ message Observation {
   repeated double values = 5;    // analog values (parallel to times)
   repeated int64 senders = 6;    // spike sender ids (parallel to times)
   string unit = 7;
+  string recordable = 8;         // when set, names this specific recorded series (g_ex, w, …) and is
+                                 // AUTHORITATIVE for it; `observable` is then the record target's family
+                                 // hint, not this series' type (so g_ex under a V_m target is not a V_m
+                                 // reading). "" = the series itself is `observable`.
 }
 
 message ObservationFrame {
@@ -250,7 +272,7 @@ message SessionClosed {
 
 message ChannelSpec {
   string name = 1;
-  ChannelKindEnum kind = 2;
+  ChannelKind kind = 2;
   string unit = 3;                  // "" = unset
   int64 size = 4;                   // 0 = unset
   bool optional = 5;

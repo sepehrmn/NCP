@@ -1,0 +1,67 @@
+// NCP per-plane access control — Zenoh ACL template (ROADMAP P0, issue #7).
+//
+// The action/command plane is world-writable on an open realm (see SECURITY.md):
+// anyone who can reach `{realm}/session/*/command` can drive an actuator. This
+// config closes that with a default-DENY ACL that only lets an *authenticated*
+// controller PUBLISH commands, while observers may only SUBSCRIBE/read.
+//
+// TEMPLATE — adapt `realm`, cert common-names, and interfaces to your deployment,
+// and pair with TLS (mutual auth) so `cert_common_names` is actually proven.
+// Apply via the Zenoh router/session config (`--config`) or the `connect`/`listen`
+// config block. Verified against the Zenoh 1.x access-control schema shape; test
+// in your environment before relying on it. Authoritative spec: zenoh.io docs.
+{
+  access_control: {
+    enabled: true,
+    // Fail closed: anything not explicitly allowed is denied.
+    default_permission: "deny",
+
+    rules: [
+      // Controllers may PUBLISH on the action (command) and stimulus planes.
+      {
+        id: "controller-writes-command",
+        messages: ["put", "delete"],
+        flows: ["ingress", "egress"],
+        permission: "allow",
+        key_exprs: [
+          "engram/ncp/session/*/command/**",
+          "engram/ncp/session/*/sensor/**", // controller reads sensors (perception)
+        ],
+      },
+      // Anyone authenticated may READ the perception/observation planes (the
+      // free read-only observer tap) but NOT write the action plane.
+      {
+        id: "observer-reads",
+        messages: ["declare_subscriber", "get"],
+        flows: ["ingress", "egress"],
+        permission: "allow",
+        key_exprs: [
+          "engram/ncp/session/*/observation",
+          "engram/ncp/session/*/sensor/**",
+        ],
+      },
+      // The session service answers the control-plane RPC queryable.
+      {
+        id: "service-rpc",
+        messages: ["declare_queryable", "reply"],
+        flows: ["ingress", "egress"],
+        permission: "allow",
+        key_exprs: ["engram/ncp/rpc"],
+      },
+    ],
+
+    // Identity: map proven mTLS client-cert common-names to subjects.
+    subjects: [
+      { id: "controller", cert_common_names: ["controller.*"] },
+      { id: "observer", cert_common_names: ["observer.*", "analysis.*"] },
+      { id: "service", cert_common_names: ["engram-service.*"] },
+    ],
+
+    // Bind rules to subjects (a perception-only observer can never command).
+    policies: [
+      { rules: ["controller-writes-command"], subjects: ["controller"] },
+      { rules: ["observer-reads"], subjects: ["observer", "controller"] },
+      { rules: ["service-rpc"], subjects: ["service"] },
+    ],
+  },
+}

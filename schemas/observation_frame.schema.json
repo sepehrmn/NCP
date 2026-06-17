@@ -5,7 +5,8 @@
         "spikes",
         "V_m",
         "rate",
-        "weight"
+        "weight",
+        "binary_state"
       ],
       "title": "Observable",
       "type": "string"
@@ -55,6 +56,18 @@
           ],
           "default": null,
           "title": "Unit"
+        },
+        "recordable": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Recordable"
         }
       },
       "required": [

@@ -1,0 +1,24 @@
+{
+  "name": "@sepehrmn/ncp",
+  "version": "0.1.0",
+  "description": "Canonical NCP (Neuro-Cybernetic Protocol) TypeScript types + transport-agnostic client. Wire-identical to the normative proto/ncp.proto contract (proto-native) and the Rust and Python peers.",
+  "license": "MIT",
+  "type": "module",
+  "repository": { "type": "git", "url": "git+https://github.com/sepehrmn/NCP.git" },
+  "homepage": "https://github.com/sepehrmn/NCP#readme",
+  "exports": {
+    ".": {
+      "types": "./ncp-ts/dist/index.d.ts",
+      "import": "./ncp-ts/dist/index.js"
+    }
+  },
+  "files": ["ncp-ts/dist", "ncp-ts/src", "ncp-ts/README.md"],
+  "sideEffects": false,
+  "scripts": {
+    "sync": "node ncp-ts/scripts/sync-bindings.mjs",
+    "build": "tsc -p ncp-ts/tsconfig.json",
+    "regen": "cargo test -p ncp-core --features ts && node ncp-ts/scripts/sync-bindings.mjs && tsc -p ncp-ts/tsconfig.json",
+    "clean": "rm -rf ncp-ts/dist"
+  },
+  "devDependencies": { "typescript": "^5.7.0" }
+}

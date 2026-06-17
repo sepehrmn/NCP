@@ -1,0 +1,18 @@
+import type { ChannelSpec } from "./ChannelSpec";
+import type { Role } from "./Role";
+import type { SafetyLimits } from "./SafetyLimits";
+/**
+ * Handshake: who the controller is and what it speaks.
+ */
+export type Capabilities = {
+    ncp_version: string;
+    kind: string;
+    controller_id: string;
+    role: Role;
+    control_rate_hz: number;
+    sensor_channels: Array<ChannelSpec>;
+    command_channels: Array<ChannelSpec>;
+    codec_id: string | null;
+    safety: SafetyLimits;
+};
+//# sourceMappingURL=Capabilities.d.ts.map

@@ -16,13 +16,17 @@ more"). One protocol, two complementary interaction patterns:
    external actuator as "just another controller" over the system's *existing*
    transport (e.g. a robot/UAV client's MAVROS setpoint topics), non-invasively.
 
-Reference implementations:
-- **Rust (canonical / normative):** the [`ncp/`](ncp/) workspace — `ncp-core`
+Normative wire contract: `proto/ncp.proto` (proto-native; the JSON Schemas are its
+JSON projection). The wire is **simulator-agnostic** — the typed record/stimulus
+vocabulary are abstract SNN concepts a `SimulationBackend` maps to its simulator
+(NEST today; NEURON/Brian2/GeNN are a future *backend*, no wire change — see
+[`ROADMAP.md`](ROADMAP.md)). Reference implementations:
+- **Rust (reference implementation):** the [`ncp/`](ncp/) workspace — `ncp-core`
   (pure protocol: wire types, version guard, key scheme, rate codec, safety
   governor, in-process bus + control loop), `ncp-zenoh` (the decoupled Zenoh
   transport with per-plane QoS), and `ncp-gateway` (Engram's Rust edge — see §6A).
-  NCP is intended to become a reusable standard (cf. MCP/ACP), and Rust is the
-  high-performance reference; the crate is self-contained and extractable to its
+  NCP is intended to become a reusable standard (cf. MCP/ACP); Rust is the
+  high-performance reference implementation, self-contained and extractable to its
   own repo / crates.io. **Language bindings off the same core:** Python
   (`ncp-python`, PyO3), TypeScript (`ncp-core --features ts`, ts-rs-generated
   types), and C/C++ (`ncp-cpp`, a C ABI + `ncp.h`) — every peer is wire-identical.
@@ -31,11 +35,13 @@ Reference implementations:
 - **Python:** `backend/neurocontrol/` — the NEST-driving server (`SessionService`
   + `NestBackend`) and the in-process reference client.
 
-Machine-readable contract: the **JSON Schemas** `schemas/*.schema.json`
-(generated from the reference types) are the de-facto contract; the protobuf IDL
-`proto/ncp.proto` is a **non-normative mirror** for binary/polyglot transports.
-All three reference implementations serialize to the **same** JSON, so they
-interoperate. This document is the human-readable source of truth.
+Machine-readable contract (proto-native): the protobuf IDL `proto/ncp.proto` is
+the **normative wire contract** — the single source of truth for message structure
+and the binary encoding. The **JSON Schemas** `schemas/*.schema.json` are its JSON
+projection (parity-guarded by `scripts/check_proto_schema_parity.py`), and the
+Rust/Python/TS bindings generate from or conform to it via buf. All reference
+implementations serialize to the **same** wire, so they interoperate. This
+document is the human-readable spec.
 
 > **Why NCP exists** (unbiased rationale vs ROS 2/DDS, Zenoh, MUSIC, the
 > Neurorobotics Platform, MCP/ACP, gRPC, dm_env_rpc, and the "compose, don't
@@ -135,13 +141,12 @@ service. `SafetyLimits` bound commands and a stale sensor forces `HOLD`.
 
 ## 5. Transport bindings (and why)
 
-NCP separates the **contract** from the **medium**. The contract has two
-representations that stay in lock-step: the **JSON Schemas** in `schemas/`
-(generated from the reference types — the de-facto contract for the JSON
-transport) and the **protobuf IDL** `proto/ncp.proto` (a non-normative mirror for
-binary/polyglot transports). The medium is a per-deployment choice behind
-the `Transport` abstraction — do **not** marry NCP to one wire. With many
-heterogeneous projects this matters; the trade-offs:
+NCP separates the **contract** from the **medium**. The contract is proto-native:
+the **protobuf IDL** `proto/ncp.proto` is the normative source of truth, and the
+**JSON Schemas** in `schemas/` are its JSON projection (kept in parity, CI-guarded).
+The medium is a per-deployment choice behind the `Transport` abstraction — do
+**not** marry NCP to one wire. With many heterogeneous projects this matters; the
+trade-offs:
 
 The key lens is **coupling**: with dozens of loosely-coupled systems you do not
 want each client wired to a server address.
@@ -154,9 +159,9 @@ want each client wired to a server address.
 | **ROS 2 (DDS) + rosbridge** | low (within ROS) | native for ROS projects; QoS; rosbridge bridges browsers | couples non-ROS projects to ROS; heavy | the project is already ROS 2 |
 | **NATS / MQTT / ZeroMQ** | varies | fast pub/sub (+ NATS req-reply); ubiquitous (MQTT) | weaker typing/RPC; reinvent framing | existing message-bus deployments |
 
-**Decision (see `DESIGN_DECISIONS.md` #21):** treat the **JSON Schemas** (from the
-reference types) as the de-facto **payload** contract and keep `ncp.proto` as a
-non-normative mirror; make **Zenoh the recommended *decoupled* default** for the
+**Decision (see `DESIGN_DECISIONS.md` #21; updated to proto-native):** treat
+`proto/ncp.proto` as the **normative wire contract** (the source of truth) with the
+**JSON Schemas** as its parity-guarded JSON projection; make **Zenoh the recommended *decoupled* default** for the
 bus (RPC via queryable, streaming via pub/sub — so no client is bound to a server
 address); keep **WebSocket/JSON** as the no-dependency fallback (shipped, and what
 a browser/Tauri-based client's frontend uses); treat **gRPC** as an *optional* point-to-point binding
@@ -215,6 +220,20 @@ action plane is the only one with command authority (`ttl_ms`, `Mode.HOLD`/
 `SensorFrame.seq` it was computed from, so a split-plane observer joins **on
 `seq`, not arrival time** (the DROP QoS on the perception plane makes arrival-time
 pairing unsound).
+
+NCP's per-plane QoS is **not invented** — it maps onto the standard ROS 2 / DDS
+QoS vocabulary, so a `rmw_zenoh` / DDS deployment can express the same contract:
+
+| NCP plane | Reliability | History | NCP safety field | ROS 2 / DDS equivalent |
+|---|---|---|---|---|
+| perception (sensor) | best-effort (DROP) | keep-last(1) (conflate) | — | `BEST_EFFORT` + `KEEP_LAST(1)` |
+| action (command) | best-effort, express, RealTime | keep-last | `ttl_ms` | **`LIFESPAN`** (≡ `ttl_ms`) + `DEADLINE` for staleness |
+| control RPC / observation | reliable (BLOCK) | keep-all | — | `RELIABLE` |
+| liveness / fail-safe | — | — | `Mode.HOLD`/`ESTOP`, `command_timeout_ms` | `LIVELINESS` + `DEADLINE` watchdog |
+
+`ttl_ms` **is** DDS `LIFESPAN`; the genuinely NCP-specific part is only the `mode`
+enum as an explicit wire authority. Mapping to these names keeps NCP interoperable
+with a ROS 2/DDS stack rather than diverging from it.
 
 **Engram's gateway (`ncp-gateway`).** Engram's brain is NEST (Python), so its NCP
 *server* stays Python. The gateway gives Engram a production-grade Rust Zenoh edge
