@@ -8,34 +8,37 @@ is the *deployment shape* (MUSIC co-schedules multiple simulators in one MPI wor
 with a shared clock; NCP serves one NEST instance to remote, multi-language
 clients), **not** the ability to interact with a live simulation.
 
-This is checked 10 ways below against the actual code
-(`backend/neurocontrol/backends.py`, `backend/neurocontrol/loop.py`).
+This is checked 10 ways below against the reference NEST backend (the host
+simulation service's `SimulationBackend` implementation and the `NeuroControlLoop`
+in `ncp-core`).
 
 ### 1. NEST execution model — does NCP use stepwise `Run`, or `Simulate`-and-stop?
-`NestBackend.open()` calls `nest.Prepare()` **once**; `NestSession.step()` calls
-`nest.Run(advance_ms)`; `close()` calls `nest.Cleanup()` (`backends.py:301,223,252`).
-This is NEST's documented stepwise/continuous-interaction mode — the same mode the
-NEST Server and co-simulation frameworks use — not a `Simulate()`-teardown loop.
+The reference backend's `open()` calls `nest.Prepare()` **once**; each `step()`
+calls `nest.Run(advance_ms)`; `close()` calls `nest.Cleanup()`. This is NEST's
+documented stepwise/continuous-interaction mode — the same mode the NEST Server and
+co-simulation frameworks use — not a `Simulate()`-teardown loop.
 
 ### 2. Kernel-state persistence — is the network rebuilt between reads?
-`ResetKernel()` happens **only at `open()`** (`backends.py:317`). Between `step()`s
+`ResetKernel()` happens **only at `open()`**. Between `step()`s
 there is no reset and no re-`Create`; the populations, recorders, generators and
 all neuron state persist. Simulation time advances monotonically across chunks
 (`sim_time_ms += advance_ms`). So "without stopping the simulation" holds in the
 sense that matters: no teardown, no rebuild, continuous state.
 
 ### 3. Data readback — streaming deltas or re-reading history?
-`NestSession.step()` reads each recorder's events and slices `[last:]`, returning
-**only the events since the previous step** (`backends.py:229–242`) — a streaming
-delta per chunk. `loop.py::NestController` goes further and reads `n_events`
-counts, computing rate from the **count delta** (O(1), no event array)
-(`loop.py:137–141`). Either way you get new data each tick from the live kernel.
+The reference `step()` reads each recorder's events and slices `[last:]`, returning
+**only the events since the previous step** — a streaming delta per chunk. The
+reference control loop goes further and reads `n_events` counts, computing rate from
+the **count delta** (O(1), no event array). Either way you get new data each tick
+from the live kernel. For high-volume raw spike/`V_m` streaming, the observation
+plane can carry the deltas as a packed little-endian column block (`ncp-core::bulk`,
+proto `BulkObservation`) instead of `repeated double` — parse-free and ~2× smaller;
+an additive, observation-plane-only option (see [`PERFORMANCE.md`](PERFORMANCE.md), #6).
 
 ### 4. Runtime input injection — can you stimulate mid-simulation?
 Yes. Each `step()` sets generator parameters (`dc_generator.amplitude`,
-`poisson_generator.rate`) **before** the `Run` chunk (`backends.py:213–222`), so a
-controller drives the running network in real time — the inverse of MUSIC's input
-event ports.
+`poisson_generator.rate`) **before** the `Run` chunk, so a controller drives the
+running network in real time — the inverse of MUSIC's input event ports.
 
 ### 5. Granularity — continuous, or quantized?
 Quantized, like MUSIC. NCP exchanges at `chunk_ms` (`SimConfig.chunk_ms`)
@@ -50,7 +53,7 @@ boundaries, not mid-tick. Same model: the simulator and the exchange interleave 
 boundaries; they do not run truly concurrently with the read.
 
 ### 7. Real-time pacing — does it keep up with wall-clock?
-`NeuroControlLoop` sleeps to hold a target `rate_hz` (`loop.py:261–272`), pacing to
+`NeuroControlLoop` (in `ncp-core`) sleeps to hold a target `rate_hz`, pacing to
 wall-clock when NEST is faster than real time. For large networks NEST may run
 *slower* than real time — a property of the model size, identical for MUSIC (and
 why neuromorphic on-chip wins on raw loop latency). Neither MUSIC nor NCP

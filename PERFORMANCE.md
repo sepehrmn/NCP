@@ -16,18 +16,18 @@ NCP neither can nor should change.
 
 ## The one real bottleneck — found and fixed
 
-`NestSession.step` previously called `device.get("events")` for **every** record
-port on **every** step and sliced `[last:]` (`backends.py`). `get("events")`
+The reference NEST backend's `step` previously called `device.get("events")` for
+**every** record port on **every** step and sliced `[last:]`. `get("events")`
 materialises the recorder's **entire history** each call, so per-step cost grew
 **O(total events recorded)** — linearly with run length. A 10-minute control loop
 at 50 Hz would slow to a crawl (and balloon memory) purely from re-copying spike
 history, even though each step only needs the last chunk. This *would* have
 throttled NEST as the loop fell behind real time.
 
-Fixed (`backends.py::NestSession.step`):
+Fixed (in the reference NEST backend's `step`):
 - **`RATE`** (the common control observable): difference the **`n_events`
   counter** — **O(1)** per step, no events array at all (the proven
-  `loop.py::NestController` pattern).
+  count-delta control-loop pattern).
 - **`SPIKES` / `V_m`**: fetch the events, return the `[last:]` tail, then
   **best-effort drain** the recorder (`set(n_events=0)`) so the next read is
   **O(new)**; if the NEST build doesn't support clearing, fall back to index
@@ -57,7 +57,7 @@ and **`T_run` dominates**. NCP adds no meaningful slowdown.
   gateway's per-request RPC. The gateway's localhost-TCP-per-request is only the
   *rare* lifecycle RPC (open/close); it is not on the per-tick path. (Connection
   reuse there is a possible micro-optimisation, not a bottleneck.)
-- **WebSocket single-thread executor.** `backend/api/neurocontrol.py` runs
+- **WebSocket single-thread executor.** The reference WebSocket endpoint runs
   `handle_json` on one shared worker thread — this serialises all connections'
   NEST work, which is *correct* (one global NEST kernel) and keeps the event loop
   free; it is not an added bottleneck (NEST is single-kernel regardless).
@@ -198,9 +198,10 @@ the command, the environment, and the known caveats.
   `local_num_threads = 1` and a fixed `rng_seed` so its bit-identical equivalence
   check is meaningful. (The realtime/overlap sweeps vary threads on purpose and do
   not require cross-thread bit-identity.)
-* **Run the env interpreter DIRECTLY, not `conda run`.** `conda run` fully buffers
-  child stdout when redirected, so per-row streaming progress never appears. Use,
-  e.g., `/opt/anaconda3/envs/p2b/bin/python -u scripts/bench_*.py`. The `-u`
+* **Run a NEST-enabled interpreter DIRECTLY, not via `conda run`.** `conda run`
+  fully buffers child stdout when redirected, so per-row streaming progress never
+  appears. Invoke the NEST-enabled Python directly with `-u`, e.g.
+  `python -u scripts/bench_*.py` (point at your env's interpreter). The `-u`
   forces unbuffered stdout. Each script also exits with a clear **"REQUIRES NEST"**
   message if `import nest` fails.
 * **General caveats:** few-reps timing is noisy on tiny signals (sub-millisecond
@@ -232,7 +233,7 @@ the command, the environment, and the known caveats.
   excluded from the equivalence set (each `Simulate` tears down/rebuilds).
 * **Command:**
   ```bash
-  /opt/anaconda3/envs/p2b/bin/python -u scripts/bench_chunk_overhead.py \
+  python -u scripts/bench_chunk_overhead.py \
       --neurons 10000 --synapses 4000 \
       --chunk-ms 100 50 20 10 5 2 1 --t-bio-ms 1000 --reps 5 --strict
   ```
@@ -267,7 +268,7 @@ the command, the environment, and the known caveats.
   in [`NEST_REALTIME.md`](NEST_REALTIME.md).
 * **Command:**
   ```bash
-  /opt/anaconda3/envs/p2b/bin/python -u scripts/bench_realtime.py \
+  python -u scripts/bench_realtime.py \
       --n 10000 50000 100000 200000 --threads 1 2 4 8 16 \
       --t-bio-ms 1000 --reps 3
   ```
@@ -306,7 +307,7 @@ the command, the environment, and the known caveats.
   OS threads outside the GIL), not the NEST interpreter.
 * **Command:**
   ```bash
-  /opt/anaconda3/envs/p2b/bin/python -u scripts/bench_overlap.py \
+  python -u scripts/bench_overlap.py \
       --n 5000 --threads 16 --chunk-ms 10 --t-bio-ms 1000 --io-ms 0.5 2 5
   ```
 * **Caveat (reproduction provenance):** the original `bench_overlap.py` prototype

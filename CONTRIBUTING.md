@@ -101,6 +101,10 @@ alters bytes/JSON on the wire or their meaning — **must** include, in the same
    and the **JSON Schemas** (`schemas/`).
 3. A corresponding update to the **conformance test**
    (`ncp-core/tests/conformance.rs`) so it pins the new contract.
+4. A **rebuild of the prebuilt TS package** (`bun run regen`, or `bun run build`
+   for a source-only change) and a commit of the regenerated `ncp-ts/dist` — it is
+   git-tracked and shipped as `@sepehrmn/ncp`, so a stale `dist` would announce the
+   wrong wire to JS/TS peers. The `ts dist up-to-date` CI job enforces this.
 
 If your change touches the wire and you have not done all four, it is incomplete.
 When in doubt about whether something is wire-visible, assume it is and ask in

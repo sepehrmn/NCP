@@ -113,7 +113,9 @@ impl Column {
                 .for_each(|x| out.extend_from_slice(&x.to_le_bytes())),
         }
     }
-    /// Lossless view as `f64` (for analog columns, regardless of stored width).
+    /// View as `f64` (for analog columns, regardless of stored width). Exact for
+    /// the f32/f64/i32 arms; the i64 arm rounds magnitudes above 2^53 (not hit by
+    /// the codec round-trip, which only feeds analog data through f32/f64).
     pub fn as_f64(&self) -> Vec<f64> {
         match self {
             Column::F32(v) => v.iter().map(|&x| x as f64).collect(),
@@ -122,7 +124,9 @@ impl Column {
             Column::I64(v) => v.iter().map(|&x| x as f64).collect(),
         }
     }
-    /// View as `i64` (for integer columns like spike senders).
+    /// View as `i64` (for integer columns like spike senders). Exact for the
+    /// i32/i64 arms; the f32/f64 arms truncate toward zero (not hit by the codec
+    /// round-trip, which only feeds integer data through i32/i64).
     pub fn as_i64(&self) -> Vec<i64> {
         match self {
             Column::I32(v) => v.iter().map(|&x| x as i64).collect(),
@@ -197,6 +201,12 @@ impl BulkBlock {
     }
 
     /// Serialize to the packed little-endian block.
+    ///
+    /// Limits (far above the observation-plane envelope): at most 65535 columns,
+    /// and each column's element count, the per-column byte offsets, and the total
+    /// block length must each fit in a `u32`. Inputs beyond these would wrap the
+    /// header casts; the observation bulk channel is orders of magnitude smaller
+    /// (a 50k-spike block is ~1.6 MB), so this is a documented bound, not a guard.
     pub fn encode(&self) -> Vec<u8> {
         let n_cols = self.columns.len();
         // Names laid out after the directory; column data after the name pool.

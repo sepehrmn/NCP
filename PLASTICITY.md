@@ -26,7 +26,8 @@ this note maps it and records what the NEST backend now implements.
   generate→compile path); `params` is not used for neuron creation. This is the
   path for fully custom neuron/synapse dynamics.
 - The `multimeter` records `V_m`; the same mechanism extends to other recordables
-  a model exposes (future: a `record_from` list on `RecordTarget`).
+  a model exposes via `RecordTarget.recordables[]` (`g_ex`/`g_in`/`w`/`rate`, …),
+  resolved as the multimeter's `record_from` list (landed in #10).
 
 ## Plasticity — long-term, short-term, and reward-modulated (UAV feedback)
 
@@ -56,8 +57,7 @@ So a UAV-derived reward signal closes a **reinforcement-learning-style plasticit
 loop** entirely within NCP's existing messages: perception in, command out, reward
 back in as a stimulus, weights observable out — `calibrated_posterior=false`
 throughout (this is a control/learning artifact, never a validated claim). This is
-the substrate the SNN-RL controller (`CUSTOM_MODELS_RLVR_ROBOTICS.md` §5.6) trains
-against.
+the substrate an SNN-RL controller trains against.
 
 ## What the backend implements vs. what the network must declare
 

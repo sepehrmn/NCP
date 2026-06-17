@@ -1,6 +1,7 @@
-# A Zenodo DOI will be minted on the first tagged release; at that point an
-# `identifiers:` block with a `type: doi` / `value:` entry (and a matching
-# `doi:` field) will be added here so this software has a citable, archived DOI.
+# A Zenodo DOI will be minted when a release is archived to Zenodo (via the
+# GitHub–Zenodo integration); at that point an `identifiers:` block with a
+# `type: doi` / `value:` entry (and a matching `doi:` field) will be added here so
+# this software has a citable, archived DOI.
 cff-version: 1.2.0
 title: "NCP — Neuro-Cybernetic Protocol"
 message: >-
@@ -25,4 +26,4 @@ keywords:
   - nest-simulator
   - zenoh
 license: MIT
-version: 0.1.0
+version: 0.2.1

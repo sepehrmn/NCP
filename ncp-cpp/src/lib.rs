@@ -66,7 +66,7 @@ pub unsafe extern "C" fn ncp_string_free(s: *mut c_char) {
     })
 }
 
-/// The NCP protocol version (e.g. "0.1"). Caller frees.
+/// The NCP protocol version (e.g. "0.2"). Caller frees.
 #[no_mangle]
 pub extern "C" fn ncp_version() -> *mut c_char {
     ffi_guard(std::ptr::null_mut(), || {

@@ -53,7 +53,10 @@ Because the data planes are pub/sub, **observers attach for free**: an analysis 
 - **Four QoS planes.** Control RPC, conflating perception, express RealTime action, and a read-only observation tap — each pays only the cost its job needs.
 - **Safety-gated action plane.** A `mode` enum (`init`/`active`/`hold`/`estop`) is an explicit wire authority, backed by a latched ESTOP, `ttl_ms` HOLD fail-safe, a fail-closed command watchdog, and geofence checks.
 - **Per-frame provenance.** `is_simulation_output` and `calibrated_posterior` are mandatory, fail-closed fields — a machine-checkable epistemic discriminator on the hot path.
-- **Conformance-tested wire (proto-native).** `proto/ncp.proto` is the normative contract; two field-set-parity guards keep everything in lock-step — `conformance.rs` (Rust serde ↔ JSON Schema) and `check_proto_schema_parity.py` (proto ↔ JSON Schema) — so no representation can silently diverge.
+- **Neuron-family coverage.** A generic named-recordable + named-parameter wire (`recordables[]`, `recordable`, `params{}`, plus the `binary_state` observable and `rate_inject` stimulus) serves NEST's point, conductance (`g_ex`/`g_in`/`w`), binary, and rate-based families — not just spiking.
+- **Bulk observation codec.** For large spike trains / `V_m` traces, the observation plane can carry a packed little-endian column block (`ncp-core::bulk`, proto `BulkObservation`): parse-free, random-access, ~2× smaller than `repeated double` — additive and observation-plane only (never the hot action loop).
+- **Conformance-tested wire (proto-native).** `proto/ncp.proto` is the normative contract; parity guards + a golden-vector corpus keep everything in lock-step — `conformance.rs` (Rust serde ↔ JSON Schema), `check_proto_schema_parity.py` (proto ↔ JSON Schema), JSON **and** binary golden vectors (`conformance/vectors/`), and a `buf breaking` WIRE/WIRE_JSON gate — so no representation can silently diverge.
+- **Authenticatable action plane.** A default-deny, per-plane Zenoh ACL template (`deploy/zenoh-access-control.json5`) + mutual-TLS enablement steps let only an authenticated commander publish commands; observers stay read-only. The open-realm default is unauthenticated until this is enabled (see `SECURITY.md`).
 - **Polyglot peers.** `proto/ncp.proto` is normative; `ncp-core` is the reference implementation. Python via PyO3, a C ABI for C/C++, and TypeScript types via ts-rs — every peer is wire-identical off the same contract, so the safety/codec logic is written once, not reimplemented per language.
 
 ## Crates
@@ -64,7 +67,8 @@ Because the data planes are pub/sub, **observers attach for free**: an analysis 
 | **`ncp-zenoh`** | The recommended decoupled transport: Zenoh *queryable* (control RPC) + *pub/sub* (perception/action/observation), each with its plane's QoS. |
 | **`ncp-python`** | Python binding (PyO3): the Rust core as an importable `ncp` module, so Python peers are wire-identical without reimplementing. |
 | **`ncp-cpp`** | C / C++ binding: a stable C ABI (`extern "C"` + `include/ncp.h`) over the same core. |
-| **`ncp-gateway`** | Engram's Rust edge: runs the Zenoh bus and bridges control-plane RPC to the Python `SessionService` over a localhost socket (NEST stays Python). |
+| **`ncp-ts`** (`@sepehrmn/ncp`) | TypeScript package: wire types generated from `ncp-core` (ts-rs) + a transport-agnostic client and a WebSocket transport — wire-identical to the Rust/Python peers. |
+| **`ncp-gateway`** | The commander's Rust edge (reference deployment, e.g. an Engram/NEST host): runs the Zenoh bus and bridges control-plane RPC to a simulation `SessionService` over a localhost socket (NEST stays Python). |
 
 ## Quickstart
 
@@ -72,8 +76,8 @@ NCP is **not yet published to crates.io** (pre-1.0). Depend on it as a pinned gi
 
 ```toml
 [dependencies]
-ncp-core  = { git = "https://github.com/sepehrmn/NCP", tag = "v0.1.0" }
-ncp-zenoh = { git = "https://github.com/sepehrmn/NCP", tag = "v0.1.0" }  # transport, optional
+ncp-core  = { git = "https://github.com/sepehrmn/NCP", tag = "v0.2.0" }
+ncp-zenoh = { git = "https://github.com/sepehrmn/NCP", tag = "v0.2.0" }  # transport, optional
 ```
 
 A minimal, wire-correct snippet using `ncp-core` — build a safety-gated `CommandFrame`, then refuse an incompatible peer version:
@@ -117,27 +121,30 @@ python scripts/bench_overlap.py    # transport/compute overlap (GIL) measurement
 - [`PERFORMANCE.md`](PERFORMANCE.md) — does NCP bottleneck NEST? The one real bottleneck found and fixed, plus a per-tick cost model.
 - [`NEST_REALTIME.md`](NEST_REALTIME.md) — can NCP read NEST live without stopping it (like MUSIC)? Yes; measured real-time-factor sweep.
 - [`ROADMAP.md`](ROADMAP.md) — the prioritized, honest pre-1.0 plan (auth, identity, conformance corpus, observability).
-- [`SECURITY.md`](SECURITY.md) — threat model and the disclosed action-plane limitation.
+- [`VERSIONING.md`](VERSIONING.md) — the SemVer wire policy, the `buf breaking` enforcement, and the pin guidance.
+- [`GOVERNANCE.md`](GOVERNANCE.md) — the governance model, the mechanical interop gates, and the path to a neutral home.
+- [`SECURITY.md`](SECURITY.md) — threat model, the disclosed action-plane limitation, and the TLS + ACL enablement steps.
 - [`CONTRIBUTING.md`](CONTRIBUTING.md) — how to build, test, and propose changes.
+- [`CHANGELOG.md`](CHANGELOG.md) — per-release notes (current: `v0.2.1`).
 
 ## Status
 
 NCP is **pre-1.0 and experimental.** Specifically:
 
-- **The wire may change.** Minor versions are treated as breaking; the version guard fails closed rather than coercing. **Pin a version** (the `tag = "v0.1.0"` above) for anything you build against.
+- **The wire may change.** Minor versions are treated as breaking; the version guard fails closed rather than coercing. **Pin a version** (the `tag = "v0.2.0"` above — the wire `0.2` baseline) for anything you build against.
 - **Single reference implementation.** `proto/ncp.proto` is the normative contract; `ncp-core` (Rust) is the reference implementation and Python/C/TS are bindings off the same contract, verified by field-set-parity drift guards — not yet a multi-implementation conformance program.
 - **The action plane is currently unauthenticated.** On an open realm it is effectively world-writable: anyone who can reach the realm can publish commands. The local `mode`/`ttl_ms` governor is defense-in-depth, **not** network security. Deploy only on a trusted, closed realm. See [`SECURITY.md`](SECURITY.md) and the P0 work in [`ROADMAP.md`](ROADMAP.md).
 
 ## Citing
 
-A Zenodo DOI will be minted on the first tagged release; until then, cite the repository (see [`CITATION.cff`](CITATION.cff)).
+A Zenodo DOI will be minted when the project is archived to Zenodo; until then, cite the repository (see [`CITATION.cff`](CITATION.cff)).
 
 ```bibtex
 @software{mahmoudian_ncp,
   author  = {Sepehr Mahmoudian},
   title   = {NCP — Neuro-Cybernetic Protocol},
   year    = {2026},
-  version = {0.1.0},
+  version = {0.2.1},
   url     = {https://github.com/sepehrmn/NCP}
 }
 ```

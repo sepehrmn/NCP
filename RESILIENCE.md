@@ -119,8 +119,8 @@ Shannon information theory.** The two answer different questions:
   information cannot do (MI gives totals, not the unique/redundant/synergistic
   split).
 
-**The elegant part:** an information-theoretic analysis client (an `ncp-observer`
-crate) *already* computes PID on the `(V,L,D,A)` tap of NCP. So the loop closes —
+**The elegant part:** an information-theoretic analysis client can compute PID
+directly on NCP's read-only observation tap. So the loop closes —
 the analysis client measures the PID structure of
 {sensor channels → action} **offline**, and feeds back a channel
 priority/drop/replicate policy that the perception codec applies **online**.

@@ -81,3 +81,23 @@ jobs:
         uses: bufbuild/buf-breaking-action@v1
         with:
           against: "https://github.com/sepehrmn/NCP.git#tag=v0.2.0,subdir=."
+
+  ts-dist:
+    name: ts dist up-to-date
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Install bun
+        uses: oven-sh/setup-bun@v2
+      # The published @sepehrmn/ncp package ships the prebuilt ncp-ts/dist (it is
+      # git-tracked). Rebuild it from source and fail if it drifts from what was
+      # committed — so a source change (e.g. a wire-version bump) that wasn't
+      # rebuilt into dist cannot ship a stale artifact. typescript is pinned in
+      # package.json for a reproducible build.
+      - name: Install deps
+        run: bun install
+      - name: Rebuild TS dist
+        run: bun run build
+      - name: dist must match the committed build
+        run: git diff --exit-code -- ncp-ts/dist

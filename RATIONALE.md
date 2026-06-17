@@ -30,9 +30,9 @@ in its own section below rather than assumed away.
 NCP is a thin domain-and-provenance layer over a mature transport. The normative
 contract is `ncp.proto` plus JSON-Schema mirrors; the reference implementation is
 a Rust SDK (`ncp-core` = wire types + safety governor + codec + key scheme;
-`ncp-zenoh` = transport; `ncp-gateway` = Engram's Rust edge over a Python NEST
-`SessionService`; `ncp-python` = a PyO3 binding; `ncp-core --features ts` =
-ts-rs-generated TypeScript types). It defines four keys over a Zenoh realm: a
+`ncp-zenoh` = transport; `ncp-gateway` = the simulation host's Rust edge over a
+Python NEST `SessionService`; `ncp-python` = a PyO3 binding; `ncp-cpp` = a C ABI for
+C/C++; `@sepehrmn/ncp` = ts-rs-generated TypeScript types + client). It defines four keys over a Zenoh realm: a
 request/reply **control plane** (`/rpc`), a Best-Effort/conflating **perception
 plane** (`…/sensor`), an express, RealTime-priority, safety-gated **action plane**
 (`…/command`, with `mode ∈ {init,active,hold,estop}` and a `ttl_ms`), and a
@@ -172,7 +172,7 @@ conceded:
    wire state a controller asserts; the composition makes safety an emergent
    property of Deadline/Liveliness/Lifespan watchdogs. *Weakness:* this is a
    **design opinion, not a fact** — a hardened DDS Deadline/Ownership/Liveliness
-   stack is arguably *safer* than a v0.1 single-author `mode` enum (see Lens 6).
+   stack is arguably *safer* than a v0.2 single-author `mode` enum (see Lens 6).
 3. **One audited safety/codec implementation** in `ncp-core`, reached by all
    languages via FFI, beats three reimplementations of ESTOP/HOLD/TTL/encoding.
    *Weakness:* only true once that one crate is actually audited and conformance-
@@ -240,12 +240,15 @@ is native, no browser WASM), so TS is the least-unified peer.
 robot/UAV mapping failing safe to zero velocity on hold/estop — a *protocol* concept
 no surveyed alternative states as an enum (though DDS LIFESPAN≈`ttl_ms` and
 OWNERSHIP/LIVELINESS cover much of the rest). *Disadvantage (confronted directly):*
-this is a **v0.1, single reference implementation, no conformance suite**, on a bus
-that **has no authentication yet** — i.e. anyone who can reach the bus can publish
-to `…/command`. A bespoke, unaudited ESTOP path on an unauthenticated bus is
-plausibly *less* safe than a 15-year-pedigreed DDS Deadline/Liveliness/Ownership
-stack, not more. The "first-class safety governor" claim and the "no auth on the
-open bus" admission are in genuine tension until auth + a conformance suite ship.
+this is a **v0.2, single reference implementation** with a pragmatic golden-vector
+conformance corpus (not yet a multi-implementation interop program), on a bus whose
+open/default realm is **unauthenticated** — without the ACL enabled, anyone who can
+reach the bus can publish to `…/command`. A default-deny per-plane Zenoh ACL +
+mutual-TLS enablement path now ships (#7), but until that enforcement is validated in
+a live deployment, a bespoke ESTOP path on an open realm is plausibly *less* safe
+than a 15-year-pedigreed DDS Deadline/Liveliness/Ownership stack. The "first-class
+safety governor" claim and the open-realm admission stay in tension until live mTLS
+enforcement is validated.
 
 **7. Domain semantics.** *Advantage:* a **networked, versioned, transport-agnostic
 wire vocabulary** for record (V_m/spikes/rate) and stimulus (current_pA/rate_hz/
@@ -258,18 +261,18 @@ escape hatches, at **zero NEST cost** (see `ROADMAP.md` "Future direction:
 simulator-agnosticism"). A second backend is the test. (So: NCP-only as a *wire
 vocabulary*, not as a concept.)
 
-**8. Observability & analysis.** *Advantage:* an analysis/observer client's `ncp-observer` subscribes
-read-only and turns each tick into a typed `(V,L,D,A)` PID sample. *Disadvantage:*
-**the "free tap" is a property of the bus, not of NCP** — any DDS/ROS 2 topic is
-multi-subscriber (`ros2 bag record`, `rostopic echo`, DDS spy are the same free
-tap); NCP's only contribution here is the typed `(V,L,D,A)`+provenance *semantics*
-on the frame. And the same free-read property means the action plane is
-**world-writable on an unauthenticated bus** — a safety *and* security hole, not
-only a feature. Alignment uses `seq`: `SensorFrame`, `CommandFrame`,
-`ControlStatus`, and `ObservationFrame` all carry a `seq` field (see
+**8. Observability & analysis.** *Advantage:* an analysis/observer client subscribes
+read-only and turns each tick into a typed, provenance-stamped analysis sample.
+*Disadvantage:* **the "free tap" is a property of the bus, not of NCP** — any
+DDS/ROS 2 topic is multi-subscriber (`ros2 bag record`, `rostopic echo`, DDS spy are
+the same free tap); NCP's only contribution here is the typed record/stimulus +
+provenance *semantics* on the frame. And the same free-read property means that on an
+open realm the action plane is **world-writable until the ACL is enabled** — a safety
+*and* security concern, not only a feature. Alignment uses `seq`: `SensorFrame`,
+`CommandFrame`, `ControlStatus`, and `ObservationFrame` all carry a `seq` field (see
 `messages.rs`, `schemas/observation_frame.schema.json`, the `.proto`, and the TS
-binding), so a split-plane observer can join `(V,L,D,A)` on `seq` rather than on
-arrival time. In the pure pull/sim-service path (no controller) `ObservationFrame.seq`
+binding), so a split-plane observer can join sensor/command/observation on `seq`
+rather than on arrival time. In the pure pull/sim-service path (no controller) `ObservationFrame.seq`
 is `0`; inside a closed loop it echoes the driving `SensorFrame.seq`.
 
 **9. Ecosystem maturity, adoption & risk.** *Advantage:* rides proven substrates
@@ -283,19 +286,21 @@ a bespoke Rust+PyO3+ts-rs+protobuf+Zenoh stack is a perpetual maintenance liabil
 does not yet exist) versus inheriting ROS 2/DDS's maintained tooling.
 
 **10. Developer experience, governance & standardization path.** *Advantage:*
-schema-first contract, an extractable crate (no Paper2Brain dependency), a
-Gym-familiar ergonomic target. *Disadvantage:* "become a standard like MCP" is a
+schema-first contract, an extractable crate (no parent-repo / host-application
+dependency), a Gym-familiar ergonomic target. *Disadvantage:* "become a standard like MCP" is a
 multi-year governance effort needing an open spec repo, a conformance suite,
 multiple independent implementations, and a neutral home (the LF AI & Data path
 ACP/A2A took) — none of which exists yet.
 
 ## Disadvantages & open risks (summary)
 
-NCP is **v0.1 with a single reference implementation and no conformance suite**
-(wire-compat tests are not a multi-implementor program). The **Python NEST server
-is still the real brain**; the Rust gateway is a localhost-socket bridge, so NCP
-does not yet own the hot integrator path. There is **no auth on the open bus** —
-the action plane is world-writable to anyone who can reach it. It **reinvents
+NCP is **v0.2 with a single reference implementation** and a pragmatic
+golden-vector conformance corpus (not a multi-implementor interop program). The
+**Python NEST server is still the real brain**; the Rust gateway is a
+localhost-socket bridge, so NCP does not yet own the hot integrator path. The
+open/default realm is **unauthenticated** — without the shipped ACL enabled (#7),
+the action plane is world-writable to anyone who can reach it, and live mTLS
+enforcement is not yet validated. It **reinvents
 parts of MUSIC, ROS/DDS (incl. LIFESPAN≈ttl), and MCP**, and must not claim to have
 invented SNN-robot loops, port-typed neural channels, protobuf neural datapacks, or
 latency leadership. Transport-agnosticism is Zenoh-only today; the TS peer is the

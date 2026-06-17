@@ -1,4 +1,4 @@
-// Neuro-Cybernetic Protocol (NCP) v0.1 — protobuf IDL. THE NORMATIVE WIRE CONTRACT.
+// Neuro-Cybernetic Protocol (NCP) v0.2 — protobuf IDL. THE NORMATIVE WIRE CONTRACT.
 //
 // proto-native: this `.proto` is the single source of truth for the NCP wire —
 // message structure, field numbers, types, and the binary encoding. Every other
@@ -24,7 +24,7 @@
 //
 // Wire conventions:
 //   - every message carries a `kind` string discriminator and an `ncp_version`
-//     string ("0.1"); receivers check the *major* of `ncp_version` only,
+//     string ("0.2"); receivers check the *major* of `ncp_version` only,
 //   - integer fields (ids, sizes, seq, seed) are int64, matching the Rust `i64`
 //     types and the JSON `"integer"` schema type; the JSON projection emits them
 //     as JSON numbers (a deliberate, human-readable deviation from ProtoJSON,

@@ -1,7 +1,7 @@
-# Neuro-Cybernetic Protocol (NCP) v0.1
+# Neuro-Cybernetic Protocol (NCP) v0.2
 
-A versioned, **transport-agnostic, project-agnostic** standard for letting an
-Engram-driven NEST simulation serve external robot / UAV / simulation systems —
+A versioned, **transport-agnostic, project-agnostic** standard for letting a
+running NEST simulation serve external robot / UAV / simulation systems —
 robot/UAV bodies, analysis/observer clients, and **any others** ("there could be
 more"). One protocol, two complementary interaction patterns:
 
@@ -21,19 +21,20 @@ JSON projection). The wire is **simulator-agnostic** — the typed record/stimul
 vocabulary are abstract SNN concepts a `SimulationBackend` maps to its simulator
 (NEST today; NEURON/Brian2/GeNN are a future *backend*, no wire change — see
 [`ROADMAP.md`](ROADMAP.md)). Reference implementations:
-- **Rust (reference implementation):** the [`ncp/`](ncp/) workspace — `ncp-core`
+- **Rust (reference implementation):** this Rust workspace — [`ncp-core`](ncp-core/)
   (pure protocol: wire types, version guard, key scheme, rate codec, safety
-  governor, in-process bus + control loop), `ncp-zenoh` (the decoupled Zenoh
-  transport with per-plane QoS), and `ncp-gateway` (Engram's Rust edge — see §6A).
-  NCP is intended to become a reusable standard (cf. MCP/ACP); Rust is the
-  high-performance reference implementation, self-contained and extractable to its
-  own repo / crates.io. **Language bindings off the same core:** Python
-  (`ncp-python`, PyO3), TypeScript (`ncp-core --features ts`, ts-rs-generated
-  types), and C/C++ (`ncp-cpp`, a C ABI + `ncp.h`) — every peer is wire-identical.
-  Integration is documented in `INTEGRATING.md`; real-time NEST interaction vs
-  MUSIC in `NEST_REALTIME.md`.
-- **Python:** `backend/neurocontrol/` — the NEST-driving server (`SessionService`
-  + `NestBackend`) and the in-process reference client.
+  governor, in-process bus + control loop), [`ncp-zenoh`](ncp-zenoh/) (the decoupled
+  Zenoh transport with per-plane QoS), and [`ncp-gateway`](ncp-gateway/) (the
+  simulation host's Rust edge — see §6A). NCP is intended to become a reusable
+  standard (cf. MCP/ACP); Rust is the high-performance reference implementation,
+  self-contained and extractable to its own repo / crates.io. **Language bindings
+  off the same core:** Python (`ncp-python`, PyO3), TypeScript (`@sepehrmn/ncp`,
+  ts-rs-generated types), and C/C++ (`ncp-cpp`, a C ABI + `ncp.h`) — every peer is
+  wire-identical. Integration is documented in [`INTEGRATING.md`](INTEGRATING.md);
+  real-time NEST interaction vs MUSIC in [`NEST_REALTIME.md`](NEST_REALTIME.md).
+- **Python:** the host simulation service — a NEST-driving `SessionService` +
+  `NestBackend` and an in-process reference client (the reference deployment runs
+  this behind the Rust gateway).
 
 Machine-readable contract (proto-native): the protobuf IDL `proto/ncp.proto` is
 the **normative wire contract** — the single source of truth for message structure
@@ -45,7 +46,7 @@ document is the human-readable spec.
 
 > **Why NCP exists** (unbiased rationale vs ROS 2/DDS, Zenoh, MUSIC, the
 > Neurorobotics Platform, MCP/ACP, gRPC, dm_env_rpc, and the "compose, don't
-> invent" alternative): [`ncp/RATIONALE.md`](ncp/RATIONALE.md).
+> invent" alternative): [`RATIONALE.md`](RATIONALE.md).
 
 > **Scientific boundary (binding).** Returned `V_m`/spikes are **raw simulation
 > outputs of a specified model**, never a validated reproduction. Every
@@ -105,29 +106,49 @@ surface. Lifecycle (each message has a JSON Schema of the same name):
   `handle`; `params` (numeric) / `population_sizes` carry advisory overrides.
 
 ### RecordSpec — what & where to record
-A list of `RecordTarget { port, target, observable, ids[], cadence_ms }`:
+A list of `RecordTarget { port, target, observable, ids[], cadence_ms, recordables[] }`:
 - `port` — the client's name for this recording (keys the observation).
 - `target` — population / group name in the network.
-- `observable` — `V_m` | `spikes` | `rate` | `weight`.
+- `observable` — `V_m` | `spikes` | `rate` | `weight` | `binary_state` (the last
+  for binary/multi-state neurons, recorded via a spin detector, not a multimeter).
 - `ids` — neuron/synapse indices (empty = all in `target`).
 - `cadence_ms` — analog sampling interval (ignored for `spikes`).
+- `recordables[]` — generic named, model-specific recordables beyond the typed
+  `observable` (e.g. `g_ex`/`g_in` for conductance models, `w` for adaptation,
+  `rate` for rate models), resolved via the backend's multimeter `record_from`.
+  Empty = just `observable`. (#10)
 
 ### StimulusSpec / StimulusFrame — what to inject
-A list of `StimulusTarget { port, target, kind, ids[] }` declares the input
-ports; each `step`/`run` carries a `StimulusFrame { values: {port → ChannelValue} }`.
-`kind` ∈ `current_pA` | `rate_hz` | `spike_times` | `weight_set`. A `ChannelValue`
-is `{ data: float[], unit }` — e.g. `[500.0]` pA, `[40.0]` Hz, or a list of spike
-times.
+A list of `StimulusTarget { port, target, kind, ids[], params{} }` declares the
+input ports; each `step`/`run` carries a `StimulusFrame { values: {port → ChannelValue} }`.
+`kind` ∈ `current_pA` | `rate_hz` | `spike_times` | `weight_set` | `rate_inject`
+(continuous-rate injection for rate-based neurons via rate connections /
+`step_rate_generator` — rate models cannot receive spikes). `params{}` carries
+named scalars beyond the value, e.g. a siegert neuron's `drift_factor` /
+`diffusion_factor`. (#10) A `ChannelValue` is `{ data: float[], unit }` — e.g.
+`[500.0]` pA, `[40.0]` Hz, or a list of spike times.
 
 ### ObservationFrame — the returned neural data
 `records: { port → Observation }`, where `Observation` is
-`{ port, target, observable, times[], values[], senders[], unit }`:
+`{ port, target, observable, times[], values[], senders[], unit, recordable }`:
 - analog (`V_m`): `times` (ms) + `values` (mV), parallel.
 - `spikes`: `times` (spike times, ms) + `senders` (neuron ids), parallel.
 - `rate`: `values=[rate_hz]`.
+- `recordable` — when set, names which specific recorded series this carries
+  (e.g. `g_ex`, `w`) and is authoritative for it; `observable` is then the record
+  target's family hint, not this series' type. `""`/absent = the series is
+  `observable`. (#10)
 
-This is exactly "pass stimuli → get back membrane potential or spiking data from
-a single neuron / synapse / population".
+This is exactly "pass stimuli → get back membrane potential, conductance, spiking,
+binary-state, or rate data from a single neuron / synapse / population".
+
+**Bulk option (#6).** For large spike trains / `V_m` traces, the observation plane
+may additionally carry a `bulk_observation` frame — the same metadata plus a packed
+little-endian column block (`ncp-core::bulk`; proto `BulkObservation`) instead of
+`repeated double`/`int64`: parse-free, random-access, ~2× smaller. It is an
+**additive, negotiated** option on the observation/analysis plane only (never the
+hot action loop); the JSON `ObservationFrame` above stays the canonical
+representation. See [`PERFORMANCE.md`](PERFORMANCE.md).
 
 ## 4. The closed-loop controller (layered)
 
@@ -159,7 +180,7 @@ want each client wired to a server address.
 | **ROS 2 (DDS) + rosbridge** | low (within ROS) | native for ROS projects; QoS; rosbridge bridges browsers | couples non-ROS projects to ROS; heavy | the project is already ROS 2 |
 | **NATS / MQTT / ZeroMQ** | varies | fast pub/sub (+ NATS req-reply); ubiquitous (MQTT) | weaker typing/RPC; reinvent framing | existing message-bus deployments |
 
-**Decision (see `DESIGN_DECISIONS.md` #21; updated to proto-native):** treat
+**Decision (proto-native; see [`VERSIONING.md`](VERSIONING.md) and [`RATIONALE.md`](RATIONALE.md)):** treat
 `proto/ncp.proto` as the **normative wire contract** (the source of truth) with the
 **JSON Schemas** as its parity-guarded JSON projection; make **Zenoh the recommended *decoupled* default** for the
 bus (RPC via queryable, streaming via pub/sub — so no client is bound to a server
@@ -248,8 +269,9 @@ transport is Rust:
 ```
 
 ```bash
-conda run -n p2b python -m backend.neurocontrol.bridge_server --backend nest
-cargo run -p ncp-gateway          # in ncp/
+# reference deployment: run the host simulation service (NEST) behind the gateway
+python -m <host>.bridge_server --backend nest   # the Python NEST host
+cargo run -p ncp-gateway                         # the Rust edge, from the workspace root
 ```
 
 ## 7. Status & roadmap
@@ -272,10 +294,10 @@ version guard, key scheme, rate codec, safety governor, in-process bus + control
 loop; unit-tested for wire-compatibility with the Python JSON), `ncp-zenoh` (the
 Zenoh transport with per-plane QoS), and `ncp-gateway` + `bridge_server.py`
 (Engram's Rust edge bridging to the Python `SessionService`). Two kinds of consumer
-wire against it: a **robot/UAV client** (a self-contained `src/ncp/` module behind
-an `ncp` feature — a native Rust+Zenoh client and pose/velocity↔NCP mapping) and an
-**analysis/observer client** (an `ncp-observer` crate — a read-only tap mapping the
-data planes to `(V,L,D,A)` for Partial Information Decomposition, joining on `seq`).
+wire against it: a **robot/UAV client** (a self-contained client module behind an
+`ncp` feature — a native Rust+Zenoh client and a pose/velocity↔NCP mapping) and an
+**analysis/observer client** (a read-only tap mapping the data planes to an external
+analysis representation, joining on `seq`).
 
 Also implemented since: the **streaming control plane over Zenoh**
 (`ncp_zenoh::ZenohControlTransport` + `ncp_core::NeuroControlLoop` — `sensor`→
@@ -292,9 +314,11 @@ addressing (`Keys::sensor_glob`/`command_glob`/`fleet_glob`, per-named-entity
 docs `PERFORMANCE.md`, `RESILIENCE.md`, `NEST_REALTIME.md`, `NEUROMORPHIC.md`,
 `INTEGRATING.md`.
 
-Scaffolded / next: **action-plane auth/ACL** on the open bus (the top open risk —
-the command key is world-writable without it); a `no_std` core + tiny transport
+Scaffolded / next: **action-plane auth/ACL** — a default-deny per-plane Zenoh ACL
+template + TLS/ACL enablement steps now ship (#7; `deploy/zenoh-access-control.json5`,
+`SECURITY.md`), with live mTLS-enforcement validation the remaining P0; a `no_std`
+core + tiny transport
 (zenoh-pico / micro-ROS) for MCUs; per-session capability negotiation; spike-time/
 weight stimuli; multi-population/multi-model handles; an optional **gRPC** binding
-from `ncp.proto`; a conformance program + neutral spec home for the standard; and a
-trained SNN controller (`CUSTOM_MODELS_RLVR_ROBOTICS.md` §5.6).
+from `ncp.proto`; a conformance program + neutral spec home for the standard (see
+[`GOVERNANCE.md`](GOVERNANCE.md)); and a trained SNN-RL controller.

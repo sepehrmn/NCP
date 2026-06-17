@@ -1,6 +1,6 @@
 {
   "name": "@sepehrmn/ncp",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Canonical NCP (Neuro-Cybernetic Protocol) TypeScript types + transport-agnostic client. Wire-identical to the normative proto/ncp.proto contract (proto-native) and the Rust and Python peers.",
   "license": "MIT",
   "type": "module",
@@ -20,5 +20,5 @@
     "regen": "cargo test -p ncp-core --features ts && node ncp-ts/scripts/sync-bindings.mjs && tsc -p ncp-ts/tsconfig.json",
     "clean": "rm -rf ncp-ts/dist"
   },
-  "devDependencies": { "typescript": "^5.7.0" }
+  "devDependencies": { "typescript": "5.9.2" }
 }

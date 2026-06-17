@@ -16,6 +16,14 @@ projection) with [SemVer](https://semver.org): `MAJOR.MINOR.PATCH`.
   value, new message). Existing peers keep interoperating.
 - **PATCH** — clarifications/docs with no wire effect.
 
+**Wire version vs crate/package version.** The `ncp_version` *wire* string
+(currently `0.2`) versions the contract; the Rust crates and the `@sepehrmn/ncp`
+package carry their own SemVer (currently `0.2.1`) for the SDK. They usually move
+together, but a PATCH that touches only code/docs/build artifacts (e.g. `0.2.0` →
+`0.2.1`) leaves the wire at `0.2`. **Pin `tag = "v0.2.0"`** for the wire baseline
+(what the `buf breaking` gate compares against); the crate at that-or-later tag is
+wire-`0.2`-compatible.
+
 **Pre-1.0 caveat (current):** while `0.x`, a **minor bump is treated as
 breaking** — the version guard fails closed on any `0.x` minor difference
 (`check_version`). Pin an exact version (`tag = "v0.2.0"`) for anything you build

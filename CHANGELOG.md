@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-06-17
+
+Patch release: no wire change (`ncp_version` stays `"0.2"`); fixes a shipped-artifact
+defect, doc accuracy, and documentation consistency. Crates/package versioned `0.2.1`.
+
+### Fixed
+- **The shipped TS package announced the wrong wire version.** The git-tracked,
+  published `ncp-ts/dist` (the `@sepehrmn/ncp` build artifact) still stamped
+  `ncp_version "0.1"` after the `0.2` source bump — so a JS/TS peer would be
+  version-rejected by the Rust/Python peers. Rebuilt `dist` to `"0.2"`, pinned
+  `typescript` for a reproducible build, and added a `ts dist up-to-date` CI job
+  that fails when `dist` drifts from source.
+- Doc accuracy in `ncp-core::bulk`: `Column::as_f64`/`as_i64` now note the lossy
+  (i64→f64 >2^53 / float→int) arms not exercised by the codec; `BulkBlock::encode`
+  documents its size limits; the `ncp-cpp` version-doc example says `"0.2"`.
+
+### Changed
+- Documentation consistency sweep across the markdown set (version strings, MSRV
+  1.88, `v0.2.x` feature coverage for the bulk codec / ACL / governance / neuron
+  families, and cross-link integrity).
+
 ## [0.2.0] - 2026-06-17
 
 Pre-1.0 / pre-release: the wire contract may still change. The crates are versioned
@@ -74,5 +95,6 @@ version guard, so peers must speak `0.2`.
   `ci.yml`, `release.yml`, README badge), unblocking the fmt/clippy/test gate and
   the dependabot dependency PRs.
 
-[Unreleased]: https://github.com/sepehrmn/NCP/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/sepehrmn/NCP/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/sepehrmn/NCP/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/sepehrmn/NCP/releases/tag/v0.2.0

@@ -73,7 +73,7 @@ validation) comes from the one Rust core, so all peers are wire-identical.
 | 5 | **TypeScript / frontend dev** | wire-correct types conforming to `proto/ncp.proto` (today via ts-rs from `ncp-core`; buf/ts-proto is the migration target) | browser transport → WS/Tauri (Zenoh is native, no WASM transport — the typed contract is the unification; documented) |
 | 6 | **C++ / systems dev** | native integration | a C/C++ binding → **added** (`ncp-cpp` C ABI + `ncp.h`, compile-and-run verified) |
 | 7 | **Embedded / MCU dev** | the JSON/proto wire is small | `no_std` core + a tiny transport (zenoh-pico / micro-ROS) → **gap / roadmap** (today `ncp-core` is `std`+serde; Zenoh is heavy) |
-| 8 | **Security engineer** | per-plane keys, scoped read taps | **auth/ACL on the action plane** → **open risk** (the command key is world-writable on an open bus; enable Zenoh access-control/TLS via config; top priority, needs a deployment policy) |
+| 8 | **Security engineer** | per-plane keys, scoped read taps; a default-deny per-plane Zenoh ACL template (`deploy/zenoh-access-control.json5`) + mutual-TLS enablement steps (`SECURITY.md`) | **enable the ACL + mTLS** → on an open realm the command key is world-writable until you do; the template ships the mechanism, live mTLS-enforcement validation is the remaining P0 (#7) |
 | 9 | **DevOps / SRE** | reproducible builds, one conformance command | a repeatable check → **added** (`scripts/check.sh`); CI workflow + multi-impl conformance → roadmap |
 | 10 | **OSS maintainer / standards** | versioned spec + `.proto` + schemas + extractable crate + semver guard + rationale | neutral spec repo, conformance program, multiple independent impls → **gap / roadmap** (the "become a standard" path) |
 

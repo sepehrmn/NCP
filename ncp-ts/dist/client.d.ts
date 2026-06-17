@@ -15,7 +15,7 @@
  */
 import type { ChannelValue, NetworkRef, Observation, ObservationFrame, RecordTarget, SessionClosed, SessionOpened, SimConfig, StimulusTarget } from './generated';
 /** The protocol version this client stamps on every request (`ncp_version`). */
-export declare const NCP_VERSION = "0.1";
+export declare const NCP_VERSION = "0.2";
 /**
  * JSON-wire view of a canonical type. ts-rs emits Rust `i64` fields (ids,
  * `population_sizes`, `senders`, `resolved`, `seq`, `seed`, …) as `bigint` for
