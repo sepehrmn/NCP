@@ -13,7 +13,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       # Pinned to the workspace rust-version (Cargo.toml: rust-version = "1.81.0").
       - name: Install Rust toolchain
@@ -60,7 +60,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       - name: Install buf
         uses: bufbuild/buf-setup-action@v1
       # The normative wire IDL (proto/ncp.proto) must build and lint. Language-
