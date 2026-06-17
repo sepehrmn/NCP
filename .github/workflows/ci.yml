@@ -66,14 +66,18 @@ jobs:
         uses: actions/checkout@v6
       - name: Install buf
         uses: bufbuild/buf-setup-action@v1
+        with:
+          github_token: ${{ github.token }}
       # The normative wire IDL (proto/ncp.proto) must build and lint. Language-
       # agnostic compat detection no single-language binding can provide.
       - name: buf build
         run: buf build
       - name: buf lint
         run: buf lint
-      # Enable once a baseline tag with the normalized IDL is cut:
-      # - name: buf breaking (vs latest release)
-      #   uses: bufbuild/buf-breaking-action@v1
-      #   with:
-      #     against: "https://github.com/sepehrmn/NCP.git#tag=v0.2.0,subdir=."
+      # Gate the JSON + binary wire against the last released baseline (v0.2.0,
+      # the first proto-bearing tag). A WIRE/WIRE_JSON-breaking change fails here
+      # and must bump the version (see VERSIONING.md). Bump the tag each release.
+      - name: buf breaking (vs v0.2.0)
+        uses: bufbuild/buf-breaking-action@v1
+        with:
+          against: "https://github.com/sepehrmn/NCP.git#tag=v0.2.0,subdir=."
