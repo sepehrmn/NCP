@@ -1,6 +1,7 @@
-// Copy the canonical ts-rs-generated bindings (ncp-core/bindings/*.ts — the single
-// source of truth, generated from the Rust ncp-core types) into this package's
-// src/generated/ so the package is self-contained for git / npm consumption.
+// Copy the ts-rs-generated bindings (ncp-core/bindings/*.ts, generated from the
+// ncp-core reference types, which conform to the normative proto/ncp.proto wire
+// contract) into this package's src/generated/ so the package is self-contained
+// for git / npm consumption.
 //
 // Run after regenerating the bindings:
 //   cargo test -p ncp-core --features ts   # rewrites ncp-core/bindings/*.ts

@@ -99,7 +99,7 @@ assert!(check_version(NCP_VERSION, true)?);     // exact match -> Ok(true)
 assert!(check_version("0.9", true).is_err());   // 0.x minor diff -> rejected
 ```
 
-- **Spec:** [`NEURO_CYBERNETIC_PROTOCOL.md`](NEURO_CYBERNETIC_PROTOCOL.md) is the human-readable source of truth; the JSON Schemas in [`schemas/`](schemas/) are the de-facto payload contract.
+- **Spec:** [`proto/ncp.proto`](proto/ncp.proto) is the normative wire contract (proto-native — bindings and JSON Schemas generate from / conform to it via buf); [`NEURO_CYBERNETIC_PROTOCOL.md`](NEURO_CYBERNETIC_PROTOCOL.md) is the human-readable spec, and the JSON Schemas in [`schemas/`](schemas/) are its JSON projection.
 - **Conformance + benchmarks:**
 
 ```bash

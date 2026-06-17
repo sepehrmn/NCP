@@ -12,18 +12,22 @@ Be kind. All participation is governed by our
 
 ## Repository layout
 
-NCP is a Rust workspace. Rust is the normative reference; other languages are
-bindings generated from or built on top of `ncp-core`.
+NCP is proto-native: `proto/ncp.proto` is the normative wire contract — the
+single source of truth for message structure and the binary encoding. The JSON
+Schemas, the Rust/Python/TS/C++ bindings, and `ncp-core`'s serde types generate
+from or are conformance-checked against it (via buf; parity guarded in CI).
+`ncp-core` is the reference implementation — it owns BEHAVIOR (codec, safety
+governor, keys, version).
 
 | Crate / dir   | What it is                                                            |
 | ------------- | -------------------------------------------------------------------- |
-| `ncp-core`    | Pure, transport-agnostic protocol: wire types, codec, safety governor, control loop, keys. The source of truth. |
+| `ncp-core`    | Pure, transport-agnostic protocol: wire types, codec, safety governor, control loop, keys. The reference implementation (behavior). |
 | `ncp-zenoh`   | Zenoh transport: queryable RPC + the three QoS-differentiated pub/sub planes. |
 | `ncp-gateway` | Rust edge → Python bridge.                                           |
 | `ncp-python`  | PyO3 Python bindings.                                                |
 | `ncp-cpp`     | C ABI + cbindgen header for C/C++ consumers.                         |
-| `proto/`      | Vendored `.proto` definitions.                                       |
-| `schemas/`    | Vendored JSON Schemas.                                               |
+| `proto/`      | `ncp.proto` — the normative wire contract (proto-native source of truth).    |
+| `schemas/`    | JSON Schemas — the JSON projection of `proto/ncp.proto` (parity-guarded).     |
 | `NEURO_CYBERNETIC_PROTOCOL.md` | The protocol specification.                        |
 
 ## Building and testing

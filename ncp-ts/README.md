@@ -3,12 +3,13 @@
 The **canonical TypeScript peer** of the Neuro-Cybernetic Protocol. It bundles:
 
 - **Generated message types** (`src/generated/*.ts`) — the ts-rs output of the Rust
-  `ncp-core` types (the single source of truth), so a TS peer is wire-identical to
-  the Rust and Python peers. Do **not** edit these by hand.
+  `ncp-core` reference types, which conform to the normative `proto/ncp.proto` wire
+  contract (proto-native), so a TS peer is wire-identical to the Rust and Python
+  peers. Do **not** edit these by hand.
 - **A transport-agnostic client** (`src/client.ts`) — `NeuroSimClient`
-  (`open`/`step`/`run`/`close`) built _on top of_ the generated types. It
-  re-declares no message shapes: a field rename in `ncp-core` breaks this client at
-  compile time.
+  (`open`/`step`/`run`/`close`) built _on top of_ the generated types, reusing their
+  field types for request inputs and reply shapes. Request envelopes are object
+  literals, so keep them in sync with the generated request types.
 - **A WebSocket transport** (`src/ws.ts`) — `WebSocketNeuroSim`, FIFO-correlated.
   Any other bus (e.g. native Zenoh) can implement the same `Send` interface.
 
@@ -37,7 +38,7 @@ ts-rs emits Rust `i64` fields as `bigint` for precision. `JSON.stringify` cannot
 serialize a `bigint` and `JSON.parse` yields `number`, so the JSON wire uses
 `number`. The exported `Wire<T>` maps `bigint → number` recursively; the client's
 request inputs and reply types (`ObservationFrameReply`, …) are already `Wire`-d, so
-you work in plain `number` while the generated types remain the source of truth.
+you work in plain `number` while the generated types stay wire-identical to the contract.
 
 ## Regenerating after a Rust type change
 

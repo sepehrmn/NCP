@@ -1,0 +1,21 @@
+version: v2
+# PREVIEW generation — these outputs are NOT yet the shipped SDKs:
+#   - Rust  : ncp-core stays the hand-written serde reference impl (behavior +
+#             wire). prost output is for evaluating the eventual proto-native rewire.
+#   - TS    : ncp-ts currently ships ts-rs-generated types; ts-proto is the
+#             proto-native alternative for the @sepehrmn/ncp package.
+#   - Python: Paper2Brain keeps Pydantic (canonical for storage/validation per
+#             CLAUDE.md); this is the optional binary-codec path only.
+# Output goes to gen/ (gitignored). Run `npx @bufbuild/buf generate`.
+# See proto/ncp.proto header for the normativity model.
+clean: true
+plugins:
+  - remote: buf.build/community/neoeinstein-prost
+    out: gen/rust
+  - remote: buf.build/protocolbuffers/python
+    out: gen/python
+  - remote: buf.build/community/stephenh-ts-proto
+    out: gen/ts
+    opt:
+      - outputServices=false
+      - esModuleInterop=true

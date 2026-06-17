@@ -1,0 +1,25 @@
+version: v2
+# The normative wire IDL lives in proto/ncp.proto (see its header). Buf gives us
+# language-agnostic lint + breaking-change detection across every peer at once —
+# the compat guarantee no single-language binding (ts-rs, PyO3) can provide.
+modules:
+  - path: proto
+lint:
+  use:
+    - BASIC
+  except:
+    # The repo keeps a single flat proto/ncp.proto rather than a
+    # package-mirrored directory tree (engram/ncp/v0/…); revisit if the IDL is
+    # ever split into multiple files.
+    - PACKAGE_DIRECTORY_MATCH
+  # NCP enum values are bare wire-aligned constants (V_M, CURRENT_PA, …) whose
+  # JSON wire string is annotated inline; they are intentionally not prefixed
+  # with the enum name. ENUM_VALUE_PREFIX/ZERO_VALUE_SUFFIX are STANDARD-only and
+  # already excluded by using BASIC.
+breaking:
+  # Guard the JSON + binary wire across releases. Compare against the last
+  # released tag, not main, so pre-release IDL normalization (e.g. the v0
+  # ChannelKind rename) is not flagged after it has shipped.
+  use:
+    - WIRE_JSON
+    - WIRE

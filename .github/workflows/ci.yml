@@ -43,3 +43,29 @@ jobs:
       # Regenerate + ensure the TS bindings build (ncp-core `ts` feature).
       - name: Test ncp-core with TS bindings
         run: cargo test -p ncp-core --features ts
+
+      # Guard the protobuf IDL against the JSON Schemas (field-set + enum
+      # wire-string parity). Closes the third side of the serde/schema/proto
+      # triangle; dependency-free, stdlib Python only.
+      - name: Proto <-> JSON-Schema parity
+        run: python3 scripts/check_proto_schema_parity.py
+
+  buf:
+    name: buf lint + build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Install buf
+        uses: bufbuild/buf-setup-action@v1
+      # The normative wire IDL (proto/ncp.proto) must build and lint. Language-
+      # agnostic compat detection no single-language binding can provide.
+      - name: buf build
+        run: buf build
+      - name: buf lint
+        run: buf lint
+      # Enable once a baseline tag with the normalized IDL is cut:
+      # - name: buf breaking (vs latest release)
+      #   uses: bufbuild/buf-breaking-action@v1
+      #   with:
+      #     against: "https://github.com/sepehrmn/NCP.git#tag=v0.2.0,subdir=."

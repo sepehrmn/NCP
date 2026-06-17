@@ -31,11 +31,13 @@ Reference implementations:
 - **Python:** `backend/neurocontrol/` — the NEST-driving server (`SessionService`
   + `NestBackend`) and the in-process reference client.
 
-Machine-readable contract: the **JSON Schemas** `schemas/*.schema.json`
-(generated from the reference types) are the de-facto contract; the protobuf IDL
-`proto/ncp.proto` is a **non-normative mirror** for binary/polyglot transports.
-All three reference implementations serialize to the **same** JSON, so they
-interoperate. This document is the human-readable source of truth.
+Machine-readable contract (proto-native): the protobuf IDL `proto/ncp.proto` is
+the **normative wire contract** — the single source of truth for message structure
+and the binary encoding. The **JSON Schemas** `schemas/*.schema.json` are its JSON
+projection (parity-guarded by `scripts/check_proto_schema_parity.py`), and the
+Rust/Python/TS bindings generate from or conform to it via buf. All reference
+implementations serialize to the **same** wire, so they interoperate. This
+document is the human-readable spec.
 
 > **Why NCP exists** (unbiased rationale vs ROS 2/DDS, Zenoh, MUSIC, the
 > Neurorobotics Platform, MCP/ACP, gRPC, dm_env_rpc, and the "compose, don't
@@ -135,13 +137,12 @@ service. `SafetyLimits` bound commands and a stale sensor forces `HOLD`.
 
 ## 5. Transport bindings (and why)
 
-NCP separates the **contract** from the **medium**. The contract has two
-representations that stay in lock-step: the **JSON Schemas** in `schemas/`
-(generated from the reference types — the de-facto contract for the JSON
-transport) and the **protobuf IDL** `proto/ncp.proto` (a non-normative mirror for
-binary/polyglot transports). The medium is a per-deployment choice behind
-the `Transport` abstraction — do **not** marry NCP to one wire. With many
-heterogeneous projects this matters; the trade-offs:
+NCP separates the **contract** from the **medium**. The contract is proto-native:
+the **protobuf IDL** `proto/ncp.proto` is the normative source of truth, and the
+**JSON Schemas** in `schemas/` are its JSON projection (kept in parity, CI-guarded).
+The medium is a per-deployment choice behind the `Transport` abstraction — do
+**not** marry NCP to one wire. With many heterogeneous projects this matters; the
+trade-offs:
 
 The key lens is **coupling**: with dozens of loosely-coupled systems you do not
 want each client wired to a server address.
@@ -154,9 +155,9 @@ want each client wired to a server address.
 | **ROS 2 (DDS) + rosbridge** | low (within ROS) | native for ROS projects; QoS; rosbridge bridges browsers | couples non-ROS projects to ROS; heavy | the project is already ROS 2 |
 | **NATS / MQTT / ZeroMQ** | varies | fast pub/sub (+ NATS req-reply); ubiquitous (MQTT) | weaker typing/RPC; reinvent framing | existing message-bus deployments |
 
-**Decision (see `DESIGN_DECISIONS.md` #21):** treat the **JSON Schemas** (from the
-reference types) as the de-facto **payload** contract and keep `ncp.proto` as a
-non-normative mirror; make **Zenoh the recommended *decoupled* default** for the
+**Decision (see `DESIGN_DECISIONS.md` #21; updated to proto-native):** treat
+`proto/ncp.proto` as the **normative wire contract** (the source of truth) with the
+**JSON Schemas** as its parity-guarded JSON projection; make **Zenoh the recommended *decoupled* default** for the
 bus (RPC via queryable, streaming via pub/sub — so no client is bound to a server
 address); keep **WebSocket/JSON** as the no-dependency fallback (shipped, and what
 a browser/Tauri-based client's frontend uses); treat **gRPC** as an *optional* point-to-point binding
