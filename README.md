@@ -1,6 +1,6 @@
 # NCP — Neuro-Cybernetic Protocol
 
-> A safety-gated, provenance-first wire protocol for a spiking neural simulation to perceive and act through robots, UAVs, and analysis clients.
+> A single versioned, typed, cross-language **wire contract** for a running spiking neural simulation to perceive and act through robots, UAVs, and analysis clients — safety-gated and provenance-first.
 
 [![CI](https://github.com/sepehrmn/NCP/actions/workflows/ci.yml/badge.svg)](https://github.com/sepehrmn/NCP/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)

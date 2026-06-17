@@ -27,8 +27,11 @@
 //     string ("0.1"); receivers check the *major* of `ncp_version` only,
 //   - integer fields (ids, sizes, seq, seed) are int64, matching the Rust `i64`
 //     types and the JSON `"integer"` schema type; the JSON projection emits them
-//     as JSON numbers, so values above 2^53 lose precision in a binary64/JS
-//     consumer — keep seeds/ids within that range (or carry them as strings),
+//     as JSON numbers (a deliberate, human-readable deviation from ProtoJSON,
+//     which emits int64 as strings), so values above 2^53 lose precision in a
+//     binary64/JS consumer — bounded fields (ids/seq/counters) are safe, `seed`
+//     is range-guarded by the client, and the full ProtoJSON-canonical
+//     int64-as-strings migration is tracked in sepehrmn/NCP#5,
 //   - `record`/`stimulus` on OpenSession are NESTED specs (RecordSpec /
 //     StimulusSpec), each wrapping a repeated list of targets,
 //   - unknown fields are ignored on deserialize (forward compatible within a
