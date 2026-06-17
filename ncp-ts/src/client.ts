@@ -1,12 +1,13 @@
 /**
  * Neuro-Cybernetic Protocol (NCP) — transport-agnostic TypeScript client.
  *
- * Wire-identical to the Rust (`ncp-core`) and Python peers: every message shape
- * and enum is imported from the canonical, ts-rs-generated bindings (`./generated`,
- * generated from the Rust `ncp-core` types). This file adds only the *client*
- * orchestration (build a request, await the typed reply) and a JSON-wire view of
- * the generated types — it re-declares no message shapes, so a field rename in
- * `ncp-core` breaks this file at compile time.
+ * Wire-identical to the normative `proto/ncp.proto` contract (proto-native) and the
+ * Rust (`ncp-core`) and Python peers: every reply and enum type is imported from
+ * the generated bindings (`./generated`, the ts-rs output of the `ncp-core`
+ * reference types). This file adds only the *client* orchestration (build a
+ * request, await the typed reply) and a JSON-wire view of the generated types.
+ * Request envelopes are built as object literals — keep their fields in sync with
+ * the generated request types (`OpenSession`/`StepRequest`/`RunRequest`/`CloseSession`).
  *
  * Transport-agnostic: provide any `send(message) => Promise<reply>` (see `ws.ts`
  * for a WebSocket implementation; a Zenoh/native transport can implement the same
@@ -34,7 +35,7 @@ export const NCP_VERSION = '0.1'
  * precision-safety, but `JSON.stringify` cannot serialize a `bigint` and
  * `JSON.parse` yields `number`; NCP uses small integers, so the JSON wire uses
  * `number` (see `ncp-core/bindings/README.md`). `Wire<T>` maps `bigint → number`
- * recursively so the generated shapes stay the single source of truth while
+ * recursively so the generated shapes stay wire-identical to the contract while
  * remaining JSON-(de)serializable.
  */
 export type Wire<T> = T extends bigint
@@ -70,6 +71,24 @@ export type SimInput = Partial<Wire<SimConfig>>
  *  resolve with the reply payload (already parsed from the wire). */
 export type Send = (message: Record<string, unknown>) => Promise<unknown>
 
+/**
+ * The session service replies to a failed request with one `{ kind: 'error', … }`
+ * frame (and keeps the socket open). `unwrap` surfaces it as a thrown error instead
+ * of letting an error-shaped object masquerade as a success reply.
+ */
+export interface ErrorFrame {
+  kind: 'error'
+  error: string
+  session_id?: string | null
+}
+
+function unwrap<T>(reply: unknown): T {
+  if (reply && typeof reply === 'object' && (reply as { kind?: unknown }).kind === 'error') {
+    throw new Error(`NCP error: ${(reply as ErrorFrame).error}`)
+  }
+  return reply as T
+}
+
 export class NeuroSimClient {
   constructor(private readonly send: Send) {}
 
@@ -81,6 +100,12 @@ export class NeuroSimClient {
     stimulus: StimulusInput[],
     sim: SimInput = {},
   ): Promise<SessionOpenedReply> {
+    // The JSON wire carries int64 as a JSON number, so a seed above 2^53 would
+    // lose precision before it reaches NEST. Fail fast rather than silently
+    // diverge the RNG. (See proto/ncp.proto header.)
+    if (sim.seed != null && !Number.isSafeInteger(sim.seed)) {
+      throw new Error(`NCP: sim.seed must be a safe integer (<= 2^53-1); got ${sim.seed}`)
+    }
     const reply = await this.send({
       kind: 'open_session',
       ncp_version: NCP_VERSION,
@@ -91,7 +116,7 @@ export class NeuroSimClient {
       sim,
       bindings: [],
     })
-    return reply as SessionOpenedReply
+    return unwrap<SessionOpenedReply>(reply)
   }
 
   /** Advance one chunk; optionally inject `stimulus`; returns an observation frame. */
@@ -112,7 +137,7 @@ export class NeuroSimClient {
         values: stimulus,
       },
     })
-    return reply as ObservationFrameReply
+    return unwrap<ObservationFrameReply>(reply)
   }
 
   /** Batch: advance `durationMs` holding `stimulus`; returns an observation frame. */
@@ -133,7 +158,7 @@ export class NeuroSimClient {
         values: stimulus,
       },
     })
-    return reply as ObservationFrameReply
+    return unwrap<ObservationFrameReply>(reply)
   }
 
   /** Close the session. */
@@ -143,6 +168,6 @@ export class NeuroSimClient {
       ncp_version: NCP_VERSION,
       session_id: sessionId,
     })
-    return reply as SessionClosedReply
+    return unwrap<SessionClosedReply>(reply)
   }
 }

@@ -1,12 +1,13 @@
 /**
  * Neuro-Cybernetic Protocol (NCP) — transport-agnostic TypeScript client.
  *
- * Wire-identical to the Rust (`ncp-core`) and Python peers: every message shape
- * and enum is imported from the canonical, ts-rs-generated bindings (`./generated`,
- * generated from the Rust `ncp-core` types). This file adds only the *client*
- * orchestration (build a request, await the typed reply) and a JSON-wire view of
- * the generated types — it re-declares no message shapes, so a field rename in
- * `ncp-core` breaks this file at compile time.
+ * Wire-identical to the normative `proto/ncp.proto` contract (proto-native) and the
+ * Rust (`ncp-core`) and Python peers: every reply and enum type is imported from
+ * the generated bindings (`./generated`, the ts-rs output of the `ncp-core`
+ * reference types). This file adds only the *client* orchestration (build a
+ * request, await the typed reply) and a JSON-wire view of the generated types.
+ * Request envelopes are built as object literals — keep their fields in sync with
+ * the generated request types (`OpenSession`/`StepRequest`/`RunRequest`/`CloseSession`).
  *
  * Transport-agnostic: provide any `send(message) => Promise<reply>` (see `ws.ts`
  * for a WebSocket implementation; a Zenoh/native transport can implement the same
@@ -21,7 +22,7 @@ export declare const NCP_VERSION = "0.1";
  * precision-safety, but `JSON.stringify` cannot serialize a `bigint` and
  * `JSON.parse` yields `number`; NCP uses small integers, so the JSON wire uses
  * `number` (see `ncp-core/bindings/README.md`). `Wire<T>` maps `bigint → number`
- * recursively so the generated shapes stay the single source of truth while
+ * recursively so the generated shapes stay wire-identical to the contract while
  * remaining JSON-(de)serializable.
  */
 export type Wire<T> = T extends bigint ? number : T extends Array<infer U> ? Array<Wire<U>> : T extends object ? {
@@ -46,6 +47,16 @@ export type SimInput = Partial<Wire<SimConfig>>;
 /** Any transport: serialize `message`, deliver it to the NCP session service, and
  *  resolve with the reply payload (already parsed from the wire). */
 export type Send = (message: Record<string, unknown>) => Promise<unknown>;
+/**
+ * The session service replies to a failed request with one `{ kind: 'error', … }`
+ * frame (and keeps the socket open). `unwrap` surfaces it as a thrown error instead
+ * of letting an error-shaped object masquerade as a success reply.
+ */
+export interface ErrorFrame {
+    kind: 'error';
+    error: string;
+    session_id?: string | null;
+}
 export declare class NeuroSimClient {
     private readonly send;
     constructor(send: Send);
