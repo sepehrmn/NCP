@@ -20,6 +20,16 @@ Pre-1.0 / pre-release: the wire contract may still change. The crates are versio
   Schema — field-set + enum wire-string parity), both in CI.
 - Buf scaffold (`buf.yaml` / `buf.gen.yaml`): lint, build and polyglot codegen
   (Rust/TS/Python) from `proto/ncp.proto`; `buf lint` in CI.
+- **Neuron-family coverage (#10):** generic named-recordable + named-param wire —
+  `Observable.binary_state`, `StimulusKind.rate_inject`, `RecordTarget.recordables`,
+  `Observation.recordable`, `StimulusTarget.params` — so the contract serves NEST's
+  point/conductance (`g_ex`/`g_in`/`w`), binary, and rate-based neuron families, not
+  just spiking. Additive; the Engram reference backend wires it to NEST 3.9
+  (`multimeter`/`step_rate_generator`/`spin_detector`), verified live.
+- `VERSIONING.md` (SemVer wire policy + buf-breaking enforcement + version-negotiation
+  target), a golden-vector **conformance corpus** (`conformance/vectors/` +
+  `scripts/check_conformance_vectors.py`, in CI), and `deploy/zenoh-access-control.json5`
+  (per-plane ACL template).
 - `@sepehrmn/ncp` TypeScript package (`ncp-ts`): generated wire types, a
   transport-agnostic `NeuroSimClient`, and a WebSocket transport. The client
   surfaces server `{kind:"error"}` frames as thrown errors and rejects unsafe
