@@ -237,7 +237,10 @@ message Observation {
   repeated double values = 5;    // analog values (parallel to times)
   repeated int64 senders = 6;    // spike sender ids (parallel to times)
   string unit = 7;
-  string recordable = 8;         // named recordable this series carries (g_ex, w, …); "" = observable
+  string recordable = 8;         // when set, names this specific recorded series (g_ex, w, …) and is
+                                 // AUTHORITATIVE for it; `observable` is then the record target's family
+                                 // hint, not this series' type (so g_ex under a V_m target is not a V_m
+                                 // reading). "" = the series itself is `observable`.
 }
 
 message ObservationFrame {
