@@ -125,7 +125,7 @@ python scripts/bench_overlap.py    # transport/compute overlap (GIL) measurement
 - [`GOVERNANCE.md`](GOVERNANCE.md) — the governance model, the mechanical interop gates, and the path to a neutral home.
 - [`SECURITY.md`](SECURITY.md) — threat model, the disclosed action-plane limitation, and the TLS + ACL enablement steps.
 - [`CONTRIBUTING.md`](CONTRIBUTING.md) — how to build, test, and propose changes.
-- [`CHANGELOG.md`](CHANGELOG.md) — per-release notes (current: `v0.2.1`).
+- [`CHANGELOG.md`](CHANGELOG.md) — per-release notes (current: `v0.2.2`).
 
 ## Status
 
@@ -144,7 +144,7 @@ A Zenodo DOI will be minted when the project is archived to Zenodo; until then, 
   author  = {Sepehr Mahmoudian},
   title   = {NCP — Neuro-Cybernetic Protocol},
   year    = {2026},
-  version = {0.2.1},
+  version = {0.2.2},
   url     = {https://github.com/sepehrmn/NCP}
 }
 ```

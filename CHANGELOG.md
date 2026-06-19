@@ -150,6 +150,7 @@ version guard, so peers must speak `0.2`.
   `ci.yml`, `release.yml`, README badge), unblocking the fmt/clippy/test gate and
   the dependabot dependency PRs.
 
-[Unreleased]: https://github.com/sepehrmn/NCP/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/sepehrmn/NCP/compare/v0.2.2...HEAD
+[0.2.2]: https://github.com/sepehrmn/NCP/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/sepehrmn/NCP/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/sepehrmn/NCP/releases/tag/v0.2.0
