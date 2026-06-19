@@ -7,6 +7,59 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+Hardening pass against ROADMAP P0/P1/P2 and the full-repo review (`REVIEW_AND_PLAN.md`).
+No wire change — `ncp_version` stays `"0.2"`; all additions are additive APIs, a config
+fix, docs, and CI guards, so existing peers/vectors are unaffected.
+
+### Security
+- **P0 / #7 — the per-plane ACL template now actually loads.** `deploy/zenoh-access-control.json5`
+  used `"get"` in `messages`, which is not a valid Zenoh access-control token, so
+  zenohd would reject the whole config — leaving the world-writable action plane
+  with no mitigation while reading as "secured." Replaced with the correct tokens
+  (`query` for the get/querier side; pure data-plane reads use `declare_subscriber`)
+  and clarified that `cert_common_names` matches by **exact** string (not glob).
+  Added `scripts/check_acl_template.py` (stdlib-only) as a CI guard: it fails on any
+  invalid `messages` token and enforces the safety invariant that only the `engram`
+  commander policy may PUT on `…/command/**`. Wired into `scripts/check.sh`.
+
+### Fixed
+- **Safety (critical): predictive horizon bypassed the speed clamp.** `SafetyGovernor::govern`
+  clamped only the tick-0 command; `CommandFrame.horizon[1..]` — replayed verbatim
+  by `ActionBuffer` through dropouts — passed unclamped, defeating `max_speed_mps`
+  on every tick after 0. Now every horizon step is speed-clamped with the same
+  logic, and a step that cannot be enforced (absent/non-finite velocity) truncates
+  the horizon there so replay HOLDs rather than emitting an unbounded setpoint.
+- **Safety: staleness/watchdog backstops failed OPEN on a non-finite clock.** A NaN
+  `now_s` made `(now_s - last) > timeout` evaluate false ("fresh") in both
+  `SafetyGovernor::govern` and `CommandWatchdog::should_hold`; both now treat any
+  non-finite clock input as stale/expired (HOLD).
+- **Versioning: `check_version` coerced a malformed minor to 0 (latent fail-open).**
+  A present-but-garbage minor (`"0.GARBAGE"`) or extra component (`"0.2.1"`) silently
+  parsed to a `0` minor; minor parsing is now as strict as major (reject non-numeric
+  / trailing components), so the fail-closed guard cannot become fail-open.
+- **Codec: a dropped readout population decoded to full-reverse actuation.**
+  `CodecSpec::decode` mapped an absent population to the value-range low bound
+  (e.g. −1.5 m/s — commanded motion the governor's magnitude clamp passes). It now
+  maps to the documented neutral midpoint (0.0 for a symmetric range).
+- **Resilience: reordering permanently inflated `loss_rate`.** `LinkMonitor` counted
+  a later-arriving (merely reordered) seq as a permanent loss, spuriously escalating
+  the burst/HOLD fail-safe. It now reconciles out-of-order arrivals against a bounded
+  missing-seq set, decrementing `lost`. `LinkMonitor::new` also validates/clamps
+  `ref_loss` (to `[0,0.99]`) and `threshold` (>0, finite) so an out-of-range param
+  can no longer disable or false-trip the jam detector.
+
+### Added
+- **P1 — wire-contract pinning.** `ncp_core::CONTRACT_HASH` (FNV-1a of `proto/ncp.proto`),
+  `fnv1a_hex`, `verify_contract`, and `negotiate(version, contract_hash)` — a single
+  "negotiate, reject, never coerce" handshake gate that detects a post-agreement
+  schema mutation (the "rug-pull" class). A conformance test recomputes the hash from
+  the real proto, so a proto edit that forgets to bump the constant fails CI.
+
+### Changed
+- **P2 — dual licensing.** Moved to `MIT OR Apache-2.0` (the Rust-ecosystem norm):
+  `LICENSE` → `LICENSE-MIT`, added `LICENSE-APACHE`, and updated `Cargo.toml`,
+  `package.json`, `CITATION.cff`, and the README license section/badge.
+
 ## [0.2.1] - 2026-06-17
 
 Patch release: no wire change (`ncp_version` stays `"0.2"`); fixes a shipped-artifact

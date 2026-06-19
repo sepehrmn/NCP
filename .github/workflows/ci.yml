@@ -58,6 +58,11 @@ jobs:
       - name: Conformance vectors
         run: python3 scripts/check_conformance_vectors.py
 
+      # P0/#7: the per-plane ACL template must use valid Zenoh tokens and keep
+      # command-plane PUT authority restricted to the engram commander.
+      - name: ACL template guard
+        run: python3 scripts/check_acl_template.py
+
   buf:
     name: buf lint + build
     runs-on: ubuntu-latest

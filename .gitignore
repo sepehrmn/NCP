@@ -6,3 +6,7 @@ ncp-ts/node_modules/
 
 # Buf preview codegen (not yet the shipped SDKs; see buf.gen.yaml)
 /gen
+
+# Python bytecode
+__pycache__/
+*.pyc

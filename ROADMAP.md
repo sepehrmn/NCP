@@ -42,12 +42,21 @@ only an authenticated commander may publish commands and observers are read-only
 plus concrete mutual-TLS + ACL enablement steps and the DDS-Security / MAVLink-2
 comparators in [`SECURITY.md`](SECURITY.md).
 
+**Landed (hardening pass):** the ACL template is now **loadable** — it previously
+used `"get"` in `messages`, which is not a valid Zenoh token, so zenohd would
+reject the whole config (the mitigation read as "secured" while doing nothing).
+Fixed to the correct tokens (`query` / `declare_subscriber`), clarified the
+exact-string `cert_common_names` matching, and added `scripts/check_acl_template.py`
+(CI guard: invalid-token detection + the "only `engram` may PUT on `…/command/**`"
+safety invariant), wired into `scripts/check.sh`.
+
 - **Validate the mTLS-bound identity in a live deployment.** The remaining P0 work
   is exercising the ACL + mutual-TLS enforcement end-to-end (a perception-only
   identity is *rejected* on the action plane; only the commander succeeds), so the
   `controller_id` is *proven* by the transport rather than self-asserted. *Why:*
   this closes the textbook confused-deputy / world-writable failure class — the
-  template ships the mechanism; only live enforcement validation remains.
+  template now ships a *loadable* mechanism; only live enforcement validation
+  remains (it needs a real deployment, so it is out of CI's reach).
 
 P0 is the gate for any deployment beyond a trusted, closed realm. Until live mTLS
 enforcement is validated, the `SECURITY.md` "closed realm only" guidance stands.
@@ -81,14 +90,17 @@ than coercing). But it is a one-sided local guard with no integrity binding.
   typed incompatibility from a two-way exchange, not just a local reject. *Why:*
   this turns "I refuse" into "we agreed (or explicitly did not)," which is what a
   multi-peer protocol needs.
-- **Pin and verify the wire-contract definition.** Hash the vendored contract and
-  have peers verify the contract hash, so a post-handshake schema mutation is
-  detectable. *Why:* this is the direct mitigation for the silent-mutation /
-  "rug-pull" failure class (a peer changing the contract after agreement) that the
-  signed-manifest / immutable-version literature targets.
-- **Keep failing closed.** Never silently coerce; keep the pre-1.0 "minor is
-  breaking" rule documented prominently, and add a backward-compatibility check
-  (upgrade-success style) to the conformance suite.
+- **Pin and verify the wire-contract definition. (Landed.)** `ncp_core::CONTRACT_HASH`
+  (FNV-1a of `proto/ncp.proto`) + `verify_contract` + `negotiate(version, hash)` let
+  peers reject a post-agreement schema mutation; a conformance test recomputes the
+  hash from the real proto so a forgotten bump fails CI. *Remaining:* carry the hash
+  in the control-plane handshake envelope (today `negotiate` takes it as a param),
+  and upgrade FNV → a signed/cryptographic digest if the threat model needs
+  adversarial (not just accidental) integrity.
+- **Keep failing closed. (Hardened.)** `check_version` no longer coerces a malformed
+  minor to 0 (the latent fail-open the review found): minor parsing is now as strict
+  as major. *Remaining:* the documented "minor is breaking" rule + a
+  backward-compatibility (upgrade-success) check in the conformance suite.
 
 ---
 
@@ -133,10 +145,11 @@ interop gates + the neutral-home path.
 
 ## P2 — Packaging & citation
 
-- **Dual MIT OR Apache-2.0 licensing.** Move from MIT-only to the `MIT OR
-  Apache-2.0` crates.io convention, with both `LICENSE-MIT` and `LICENSE-APACHE`.
-  *Why:* it is the Rust-ecosystem norm and removes a friction point for downstream
-  adoption.
+- **Dual MIT OR Apache-2.0 licensing. (Landed.)** Moved from MIT-only to the
+  `MIT OR Apache-2.0` crates.io convention: `LICENSE` → `LICENSE-MIT`, added
+  `LICENSE-APACHE`, and updated `Cargo.toml`, `package.json`, `CITATION.cff`, and
+  the README. *Why:* it is the Rust-ecosystem norm and removes a friction point for
+  downstream adoption.
 - **PyPI wheels via maturin.** Build the PyO3 binding into wheels (consider `abi3`
   so one wheel covers CPython 3.8+ per platform) and add a `pyproject.toml`. *Why:*
   maturin is the canonical PyO3-to-PyPI path; a published wheel is table stakes for

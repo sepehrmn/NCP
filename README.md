@@ -3,7 +3,7 @@
 > A single versioned, typed, cross-language **wire contract** for a running NEST point- and rate-neuron simulation (spiking, binary, and rate-based models) to perceive and act through robots, UAVs, and analysis clients — safety-gated and provenance-first.
 
 [![CI](https://github.com/sepehrmn/NCP/actions/workflows/ci.yml/badge.svg)](https://github.com/sepehrmn/NCP/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![License: MIT OR Apache-2.0](https://img.shields.io/badge/License-MIT%20OR%20Apache--2.0-blue.svg)](#license)
 [![Rust 1.88+](https://img.shields.io/badge/rust-1.88%2B-orange.svg)](https://www.rust-lang.org)
 [![status: experimental](https://img.shields.io/badge/status-experimental%20(pre--1.0)-orange.svg)](#status)
 [![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
@@ -155,7 +155,12 @@ Contributions are welcome. Please read [`CONTRIBUTING.md`](CONTRIBUTING.md) for 
 
 ## License
 
-MIT © 2026 Sepehr Mahmoudian. See [`LICENSE`](LICENSE).
+Dual-licensed under either [MIT](LICENSE-MIT) or [Apache-2.0](LICENSE-APACHE) at
+your option (the Rust-ecosystem convention). © 2026 Sepehr Mahmoudian.
+
+Unless you explicitly state otherwise, any contribution intentionally submitted
+for inclusion in the work by you, as defined in the Apache-2.0 license, shall be
+dual-licensed as above, without any additional terms or conditions.
 
 ## Acknowledgements / prior art
 

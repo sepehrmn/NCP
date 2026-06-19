@@ -28,6 +28,9 @@ cargo build -p ncp-python
 step "ncp-cpp build (C ABI for C++; cbindgen header)"
 cargo build -p ncp-cpp
 
+step "ACL template guard (P0/#7: valid Zenoh tokens + command-plane authority)"
+python3 scripts/check_acl_template.py
+
 step "clippy (lints)"
 cargo clippy -p ncp-core --all-targets
 

@@ -108,12 +108,31 @@ pub struct LinkMonitor {
     ref_loss: f64,
     threshold: f64,
     burst: bool,
+    /// Recently gap-counted seqs (bounded), so an out-of-order arrival can be
+    /// reconciled — decrementing `lost` — instead of permanently inflating
+    /// `loss_rate` on a merely-reordered link.
+    missing: std::collections::BTreeSet<i64>,
 }
 
 impl LinkMonitor {
     /// `ref_loss` is the tolerated baseline loss fraction; `threshold` is the
     /// CUSUM trip level (higher = slower but fewer false alarms).
     pub fn new(session_id: impl Into<String>, ref_loss: f64, threshold: f64) -> Self {
+        // Validate the detector params. The CUSUM jam trigger is load-bearing
+        // (it gates the HOLD→ESTOP fail-safe): a `ref_loss >= 1.0` makes the
+        // burst never trip (fail-open), a `threshold <= 0` false-trips every
+        // frame, and a non-finite either poisons the accumulator. Clamp to a
+        // live, sane range rather than trusting the caller.
+        let ref_loss = if ref_loss.is_finite() {
+            ref_loss.clamp(0.0, 0.99)
+        } else {
+            0.05
+        };
+        let threshold = if threshold.is_finite() && threshold > 0.0 {
+            threshold
+        } else {
+            5.0
+        };
         Self {
             session_id: session_id.into(),
             expected: None,
@@ -124,6 +143,7 @@ impl LinkMonitor {
             ref_loss,
             threshold,
             burst: false,
+            missing: std::collections::BTreeSet::new(),
         }
     }
 
@@ -147,25 +167,47 @@ impl LinkMonitor {
         // ~threshold/(1-ref_loss) losses (~6 for the defaults), far below the cap,
         // so a larger real gap changes nothing observable past the trip point.
         const MAX_GAP_OBSERVE: i64 = 256;
+        // Bound on the reconciliation set so a hostile/huge gap cannot grow it
+        // without limit; `lost` stays exact regardless (see saturating_add).
+        const MISSING_CAP: usize = 4096;
         if let Some(e) = self.expected {
             if seq > e {
                 // Missed e..=seq-1. `missed` is positive (guarded by `seq > e`).
                 let missed = seq - e;
                 self.lost = self.lost.saturating_add(missed); // exact unless it would overflow
+                // Remember the (bounded) head of the gap so a later out-of-order
+                // arrival can be reconciled. The loop short-circuits at the cap,
+                // so a billion-seq gap costs at most MISSING_CAP inserts.
+                for s in e..seq {
+                    if self.missing.len() >= MISSING_CAP {
+                        break;
+                    }
+                    self.missing.insert(s);
+                }
                 for _ in 0..missed.min(MAX_GAP_OBSERVE) {
                     self.observe(true);
                 }
             } else if seq < e {
-                // Out-of-order / duplicate: count as received, no gap.
+                // Out-of-order / duplicate. If this seq was previously counted as
+                // lost, it actually arrived late: reconcile by decrementing `lost`
+                // and forgetting it, so mere reordering does not permanently
+                // inflate loss_rate (and spuriously escalate the fail-safe). A
+                // true duplicate (already reconciled / never missing) is a no-op.
+                if self.missing.remove(&seq) {
+                    self.lost = (self.lost - 1).max(0);
+                }
             }
         }
         self.received = self.received.saturating_add(1);
         self.observe(false);
         self.last_seq = seq;
-        // CRITICAL: a single peer-reachable frame with seq == i64::MAX would make
-        // `seq + 1` overflow and panic in debug. Saturate so the next-expected
-        // pins at i64::MAX instead of wrapping/panicking.
-        self.expected = Some(seq.saturating_add(1));
+        // Advance the next-expected seq FORWARD only: an out-of-order (late)
+        // arrival must not rewind `expected` (that would re-open the gap it just
+        // filled and corrupt reconciliation). CRITICAL: a frame with seq ==
+        // i64::MAX would make `seq + 1` overflow and panic in debug — saturate so
+        // next-expected pins at i64::MAX instead of wrapping/panicking.
+        let next = seq.saturating_add(1);
+        self.expected = Some(self.expected.map_or(next, |e| e.max(next)));
     }
 
     pub fn loss_rate(&self) -> f64 {
@@ -331,6 +373,37 @@ mod tests {
         assert!(
             buf.active(0.05).is_some(),
             "after reset, Active applies again"
+        );
+    }
+
+    #[test]
+    fn out_of_order_arrival_reconciles_loss() {
+        // resilience-1: a reordered (not lost) seq must not permanently inflate
+        // loss_rate. 0,1,4 counts 2 and 3 as lost; their late arrival reconciles.
+        let mut m = LinkMonitor::new("uav1", 0.05, 5.0);
+        for s in [0, 1, 4] {
+            m.on_seq(s);
+        }
+        assert_eq!(m.lost, 2, "gap to 4 counts 2,3 as lost");
+        m.on_seq(2);
+        m.on_seq(3);
+        assert_eq!(m.lost, 0, "reordered arrivals reconcile the loss count");
+        assert_eq!(m.loss_rate(), 0.0, "pure reordering -> zero loss");
+        // A duplicate of an already-reconciled seq is a no-op (no negative lost).
+        m.on_seq(2);
+        assert_eq!(m.lost, 0);
+    }
+
+    #[test]
+    fn invalid_detector_params_fall_back_to_defaults() {
+        // resilience-2: non-finite ref_loss/threshold must not poison or disable
+        // the jam detector — they fall back to the live defaults (0.05 / 5.0).
+        let mut m = LinkMonitor::new("x", f64::NAN, f64::NAN);
+        m.on_seq(0);
+        m.on_seq(100); // big gap -> burst should still trip with default params
+        assert!(
+            m.is_burst(),
+            "clamped/defaulted params keep the burst detector live"
         );
     }
 

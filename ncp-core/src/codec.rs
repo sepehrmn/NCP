@@ -151,14 +151,24 @@ impl CodecSpec {
             if m.component >= MAX_COMPONENT {
                 continue;
             }
-            let rate = *pop_rates.get(&m.population).unwrap_or(&m.rate_range_hz.0);
-            let value = lerp(
-                rate,
-                m.rate_range_hz.0,
-                m.rate_range_hz.1,
-                m.value_range.0,
-                m.value_range.1,
-            );
+            // A dropped/renamed readout population must NOT be treated as "rate =
+            // low end of the range": for a symmetric range that lerps to the most
+            // negative command (e.g. -1.5 m/s — full-reverse actuation), which the
+            // governor only magnitude-clamps, so it passes as commanded motion.
+            // Map an absent population to the documented NEUTRAL value (the
+            // midpoint of value_range — 0.0 for a symmetric range), keeping the
+            // command channel shape intact but never emitting max-magnitude
+            // actuation for missing data.
+            let value = match pop_rates.get(&m.population) {
+                Some(rate) => lerp(
+                    *rate,
+                    m.rate_range_hz.0,
+                    m.rate_range_hz.1,
+                    m.value_range.0,
+                    m.value_range.1,
+                ),
+                None => 0.5 * (m.value_range.0 + m.value_range.1),
+            };
             let buf = buffers.entry(m.command_channel.clone()).or_default();
             while buf.len() <= m.component {
                 buf.push(0.0);

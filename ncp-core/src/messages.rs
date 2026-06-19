@@ -812,19 +812,24 @@ impl std::error::Error for NcpVersionError {}
 /// else `Ok(false)`.
 pub fn check_version(version: &str, strict: bool) -> Result<bool, NcpVersionError> {
     let parse_ver = |s: &str| -> Result<(u64, u64), NcpVersionError> {
+        let err = || NcpVersionError(format!("unparseable ncp_version {s:?}"));
+        // Strict: 1 or 2 dot-separated components, each a base-10 u64 with no
+        // trailing junk. A malformed minor ("2.GARBAGE") or extra component
+        // ("0.2.x") must REJECT, never silently coerce to 0 — otherwise the
+        // fail-closed guard becomes fail-open the moment our own minor is 0.
         let mut parts = s.split('.');
-        let major = parts
-            .next()
-            .and_then(|m| m.parse::<u64>().ok())
-            .ok_or_else(|| NcpVersionError(format!("unparseable ncp_version {s:?}")))?;
-        // Missing minor (e.g. "1") is treated as minor 0.
-        let minor = parts
-            .next()
-            .map(|m| m.parse::<u64>())
-            .transpose()
-            .ok()
-            .flatten()
-            .unwrap_or(0);
+        let major = parts.next().ok_or_else(err)?;
+        let major: u64 = major.parse().map_err(|_| err())?;
+        let minor: u64 = match parts.next() {
+            // Missing minor (e.g. "1") is treated as minor 0...
+            None => 0,
+            // ...but a PRESENT minor must parse strictly.
+            Some(m) => m.parse().map_err(|_| err())?,
+        };
+        // No third component allowed (semver patch is not part of the wire id).
+        if parts.next().is_some() {
+            return Err(err());
+        }
         Ok((major, minor))
     };
     let (got_major, got_minor) = parse_ver(version)?;
@@ -845,6 +850,54 @@ pub fn check_version(version: &str, strict: bool) -> Result<bool, NcpVersionErro
         return Ok(false);
     }
     Ok(true)
+}
+
+/// FNV-1a (64-bit) hex digest of the normative wire contract (`proto/ncp.proto`).
+/// Peers exchange this alongside `ncp_version` in the control-plane handshake and
+/// reject a mismatch, so a post-agreement schema mutation (the "rug-pull" failure
+/// class) is *detectable* rather than silently coerced. It is recomputed from the
+/// actual proto by the `contract_hash_matches_proto` test, so a proto edit that
+/// forgets to bump this constant fails CI.
+pub const CONTRACT_HASH: &str = "c35c4897a317049f";
+
+/// FNV-1a (64-bit) hex digest of `bytes`. Dependency-free (no sha/digest crate),
+/// adequate for the contract-pinning integrity-vs-accidental-drift use. It is
+/// **not** a cryptographic MAC — adversarial integrity is the transport's job
+/// (mTLS); this detects unintended/forgotten contract drift between peers.
+pub fn fnv1a_hex(bytes: &[u8]) -> String {
+    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+    for &b in bytes {
+        h ^= b as u64;
+        h = h.wrapping_mul(0x0000_0100_0000_01b3);
+    }
+    format!("{h:016x}")
+}
+
+/// Verify a peer-advertised contract hash against ours. `None` = the peer did not
+/// advertise one (older / minimal peer): accepted within a compatible version,
+/// since [`check_version`] still gates the wire shape. `Some(h)` must equal
+/// [`CONTRACT_HASH`] exactly, else a typed rejection — never coerce.
+pub fn verify_contract(peer_hash: Option<&str>) -> Result<(), NcpVersionError> {
+    match peer_hash {
+        None => Ok(()),
+        Some(h) if h == CONTRACT_HASH => Ok(()),
+        Some(h) => Err(NcpVersionError(format!(
+            "NCP contract-hash mismatch: peer {h:?}, want {CONTRACT_HASH:?} \
+             (post-handshake schema mutation?)"
+        ))),
+    }
+}
+
+/// Full handshake gate: the `(major, minor)` version must match strictly AND the
+/// peer contract hash (if advertised) must equal ours. The single entry point a
+/// control-plane `open_session` should call — "negotiate, reject, never coerce"
+/// (ROADMAP P1). Returns the first failure as a typed error.
+pub fn negotiate(
+    peer_version: &str,
+    peer_contract_hash: Option<&str>,
+) -> Result<(), NcpVersionError> {
+    check_version(peer_version, true)?;
+    verify_contract(peer_contract_hash)
 }
 
 /// Read the `kind` discriminator off any NCP JSON (for client reply dispatch).
@@ -919,4 +972,54 @@ pub fn validate(json: &serde_json::Value) -> Result<(), ValidationError> {
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn check_version_rejects_malformed_minor_no_coercion() {
+        // core-wire-1: a present-but-garbage minor or a trailing component must
+        // REJECT (Err in strict mode), never silently coerce to minor 0. Tested
+        // here against the live "0.2": none of these may parse to (0, 2).
+        for bad in ["0.GARBAGE", "0.2.1", "0.2x", "0.", "0.2.0", "x.2", "0.0.0.0"] {
+            assert!(
+                check_version(bad, true).is_err(),
+                "malformed version {bad:?} must be rejected, not coerced"
+            );
+        }
+        // Exact match passes; a missing minor means 0 and so mismatches 0.2.
+        assert_eq!(check_version("0.2", true), Ok(true));
+        assert!(check_version("0", true).is_err(), "0 -> (0,0) != (0,2)");
+        // Non-strict mode surfaces the same rejection as Ok(false), not a coerced pass.
+        assert_eq!(check_version("0.1", false), Ok(false));
+    }
+
+    #[test]
+    fn contract_hash_matches_proto() {
+        // Drift guard: recompute the FNV-1a of the real proto and assert it equals
+        // the pinned CONTRACT_HASH, so any proto edit must bump the constant.
+        let proto = std::fs::read(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../proto/ncp.proto"
+        ))
+        .expect("proto/ncp.proto readable from the workspace");
+        assert_eq!(
+            fnv1a_hex(&proto),
+            CONTRACT_HASH,
+            "proto changed without bumping CONTRACT_HASH (or vice versa)"
+        );
+    }
+
+    #[test]
+    fn negotiate_gates_version_and_contract() {
+        // Compatible version + matching (or absent) hash -> Ok.
+        assert!(negotiate(NCP_VERSION, Some(CONTRACT_HASH)).is_ok());
+        assert!(negotiate(NCP_VERSION, None).is_ok());
+        // Hash mismatch is a typed rejection even when the version matches.
+        assert!(negotiate(NCP_VERSION, Some("deadbeefdeadbeef")).is_err());
+        // Version mismatch rejects regardless of the hash.
+        assert!(negotiate("0.1", Some(CONTRACT_HASH)).is_err());
+    }
 }

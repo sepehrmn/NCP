@@ -25,5 +25,7 @@ keywords:
   - protocol
   - nest-simulator
   - zenoh
-license: MIT
+license:
+  - MIT
+  - Apache-2.0
 version: 0.2.1

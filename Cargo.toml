@@ -27,7 +27,7 @@ members = ["ncp-core", "ncp-zenoh", "ncp-gateway", "ncp-python", "ncp-cpp"]
 [workspace.package]
 version = "0.2.1"
 edition = "2021"
-license = "MIT"
+license = "MIT OR Apache-2.0"
 authors = ["Sepehr Mahmoudian"]
 repository = "https://github.com/sepehrmn/NCP"
 homepage = "https://github.com/sepehrmn/NCP"

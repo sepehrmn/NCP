@@ -247,7 +247,13 @@ impl SafetyGovernor {
         let stale = match last_sensor_s {
             None => true,
             Some(last) => {
-                !timeout_ms.is_finite()
+                // A non-finite clock (NaN/±inf `now_s` or `last`) makes the
+                // `(now_s - last) > timeout_s` comparison NaN→false — i.e. "not
+                // stale", a fail-OPEN on a bad clock. Treat any non-finite clock
+                // input as stale (HOLD), defaulting the staleness backstop closed.
+                !now_s.is_finite()
+                    || !last.is_finite()
+                    || !timeout_ms.is_finite()
                     || timeout_ms <= 0.0
                     || !timeout_s.is_finite()
                     || (now_s - last) > timeout_s
@@ -286,35 +292,56 @@ impl SafetyGovernor {
         let mut out = command.clone();
         if let Some(max_speed) = self.limits.max_speed_mps {
             if max_speed > 0.0 {
-                let vel = out.channels.get(&self.velocity_channel).cloned();
-                match vel {
-                    None => {
-                        // The speed limit references a channel that is not present on
-                        // this command -> cannot enforce -> fail closed (HOLD).
-                        return self.hold_frame(command);
-                    }
-                    Some(vel) => {
-                        let mag = vel.data.iter().map(|c| c * c).sum::<f64>().sqrt();
-                        if !mag.is_finite() {
-                            // A non-finite command (divide-by-zero upstream) would slip
-                            // past the `mag > max_speed` comparison — fail safe to HOLD.
-                            return self.hold_frame(command);
-                        }
-                        if mag > max_speed {
-                            let k = max_speed / mag;
-                            out.channels.insert(
-                                self.velocity_channel.clone(),
-                                ChannelValue {
-                                    data: vel.data.iter().map(|c| c * k).collect(),
-                                    unit: vel.unit,
-                                },
-                            );
-                        }
+                // Tick 0: an absent or non-finite velocity cannot be enforced ->
+                // fail closed (HOLD).
+                if self.clamp_velocity(&mut out.channels, max_speed).is_err() {
+                    return self.hold_frame(command);
+                }
+                // CRITICAL: clamp every predictive horizon step too. The
+                // ActionBuffer replays `horizon[i]` verbatim on every tick after
+                // 0, so an unclamped horizon defeats the speed limit for the whole
+                // ride-through window. A step that cannot be clamped (absent /
+                // non-finite velocity) truncates the horizon there, so replay
+                // HOLDs rather than emitting an unbounded setpoint.
+                let mut safe_len = out.horizon.len();
+                for (i, step) in out.horizon.iter_mut().enumerate() {
+                    if self.clamp_velocity(step, max_speed).is_err() {
+                        safe_len = i;
+                        break;
                     }
                 }
+                out.horizon.truncate(safe_len);
             }
         }
         out
+    }
+
+    /// Clamp the velocity channel of `channels` to `max_speed` (m/s), in place,
+    /// preserving direction and unit. `Ok(())` if it was within the limit or
+    /// successfully scaled down; `Err(())` if the velocity channel is absent or
+    /// its magnitude is non-finite — i.e. the limit cannot be enforced and the
+    /// caller must fail safe. Shared by the tick-0 command and every horizon step
+    /// so the speed bound holds across the entire predictive replay.
+    fn clamp_velocity(
+        &self,
+        channels: &mut crate::messages::Map<ChannelValue>,
+        max_speed: f64,
+    ) -> Result<(), ()> {
+        let vel = channels.get(&self.velocity_channel).ok_or(())?;
+        let mag = vel.data.iter().map(|c| c * c).sum::<f64>().sqrt();
+        if !mag.is_finite() {
+            return Err(());
+        }
+        if mag > max_speed {
+            let k = max_speed / mag;
+            let data: Vec<f64> = vel.data.iter().map(|c| c * k).collect();
+            let unit = vel.unit.clone();
+            channels.insert(
+                self.velocity_channel.clone(),
+                ChannelValue { data, unit },
+            );
+        }
+        Ok(())
     }
 }
 
@@ -347,7 +374,16 @@ impl CommandWatchdog {
     pub fn should_hold(&self, now_s: f64) -> bool {
         match self.last_recv_s {
             None => true,
-            Some(t) => self.ttl_s <= 0.0 || (now_s - t) > self.ttl_s,
+            // A non-finite clock (`now_s` or the stored `t`) makes
+            // `(now_s - t) > ttl_s` evaluate NaN→false — "not expired", a
+            // fail-OPEN backstop on a bad clock. Treat any non-finite clock as
+            // expired (HOLD), so the deadline backstop defaults closed.
+            Some(t) => {
+                !now_s.is_finite()
+                    || !t.is_finite()
+                    || self.ttl_s <= 0.0
+                    || (now_s - t) > self.ttl_s
+            }
         }
     }
 }
@@ -597,6 +633,84 @@ mod tests {
             !gov.is_estopped(),
             "a missing-frame channel HOLD must not latch"
         );
+    }
+
+    // ───────── CRITICAL: predictive horizon steps obey the same speed clamp ─────────
+
+    #[test]
+    fn horizon_steps_are_speed_clamped() {
+        let mut gov = SafetyGovernor::new(SafetyLimits {
+            max_speed_mps: Some(1.0),
+            ..Default::default()
+        });
+        // tick 0 within limit; the horizon carries an over-limit step (mag 5).
+        let mut tick0 = crate::messages::Map::new();
+        tick0.insert(
+            "velocity_setpoint".into(),
+            ChannelValue::vec3(0.5, 0.0, 0.0, Some("m/s")),
+        );
+        let mut over = crate::messages::Map::new();
+        over.insert(
+            "velocity_setpoint".into(),
+            ChannelValue::vec3(3.0, 4.0, 0.0, Some("m/s")), // mag 5 > 1
+        );
+        let cmd = CommandFrame {
+            channels: tick0,
+            horizon: vec![over],
+            horizon_dt_ms: Some(50.0),
+            ..Default::default()
+        };
+        // Fresh sensor, no geofence -> ACTIVE; the horizon must come back clamped.
+        let out = gov.govern(&cmd, None, 1.0, Some(1.0));
+        assert_eq!(out.mode, Mode::Active);
+        let hv = &out.horizon[0]["velocity_setpoint"].data;
+        let mag = hv.iter().map(|c| c * c).sum::<f64>().sqrt();
+        assert!(
+            (mag - 1.0).abs() < 1e-9,
+            "horizon step must be clamped to max_speed (1.0), got {mag}"
+        );
+    }
+
+    #[test]
+    fn nonfinite_horizon_step_truncates_replay() {
+        let mut gov = SafetyGovernor::new(SafetyLimits {
+            max_speed_mps: Some(2.0),
+            ..Default::default()
+        });
+        let step = |x: f64| {
+            let mut m = crate::messages::Map::new();
+            m.insert(
+                "velocity_setpoint".into(),
+                ChannelValue::vec3(x, 0.0, 0.0, Some("m/s")),
+            );
+            m
+        };
+        let cmd = CommandFrame {
+            channels: step(0.5),
+            // good, then non-finite, then good: replay must stop AT the poisoned step.
+            horizon: vec![step(1.0), step(f64::NAN), step(1.0)],
+            horizon_dt_ms: Some(50.0),
+            ..Default::default()
+        };
+        let out = gov.govern(&cmd, None, 1.0, Some(1.0));
+        assert_eq!(
+            out.horizon.len(),
+            1,
+            "horizon truncates at the first unclampable (non-finite) step"
+        );
+    }
+
+    #[test]
+    fn nan_clock_forces_hold() {
+        // safety-2: a non-finite `now_s` must be treated as stale (HOLD), not slip
+        // past the `(now_s - last) > timeout` comparison as "fresh".
+        let mut gov = SafetyGovernor::new(SafetyLimits::default());
+        let out = gov.govern(&CommandFrame::default(), None, f64::NAN, Some(1.0));
+        assert_eq!(out.mode, Mode::Hold, "NaN clock must fail safe to HOLD");
+
+        let mut wd = CommandWatchdog::new();
+        wd.on_command(1.0, 200.0);
+        assert!(wd.should_hold(f64::NAN), "watchdog HOLDs on a NaN clock");
     }
 
     #[test]

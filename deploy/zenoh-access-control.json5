@@ -35,7 +35,7 @@
       },
       {
         id: "engram-reads-sensor",
-        messages: ["declare_subscriber", "get"],
+        messages: ["declare_subscriber"],
         flows: ["ingress", "egress"],
         permission: "allow",
         key_exprs: ["engram/ncp/session/*/sensor/**"],
@@ -60,18 +60,20 @@
       },
       {
         id: "robot-reads-command",
-        messages: ["declare_subscriber", "get"],
+        messages: ["declare_subscriber"],
         flows: ["ingress", "egress"],
         permission: "allow",
         key_exprs: ["engram/ncp/session/*/command/**"],
       },
 
       // ── Session lifecycle: any authenticated client (robot/observer) may QUERY
-      // the RPC key to open/close a session. WITHOUT this `get`, a default-deny
-      // realm would block every session from ever opening.
+      // the RPC key to open/close a session. WITHOUT this `query`, a default-deny
+      // realm would block every session from ever opening. (`query` is the Zenoh
+      // ACL message token for the get/querier side; `get` is NOT a valid token and
+      // makes zenohd reject the whole config — see scripts/check_acl_template.py.)
       {
         id: "client-queries-rpc",
-        messages: ["get"],
+        messages: ["query"],
         flows: ["ingress", "egress"],
         permission: "allow",
         key_exprs: ["engram/ncp/rpc"],
@@ -81,7 +83,7 @@
       // planes. Never the action plane — a perception-only client cannot command.
       {
         id: "observer-reads",
-        messages: ["declare_subscriber", "get"],
+        messages: ["declare_subscriber"],
         flows: ["ingress", "egress"],
         permission: "allow",
         key_exprs: [
@@ -95,10 +97,15 @@
     // with mutual TLS (see SECURITY.md "Enabling transport authentication") so
     // these common-names are actually proven — an open realm without mTLS makes
     // every subject trivially spoofable and this ACL meaningless.
+    //
+    // NB: Zenoh matches `cert_common_names` by EXACT string equality, not glob —
+    // a value like "robot.*" matches only a CN literally equal to "robot.*", never
+    // "robot1". List one exact CN per certificate you issue (add more entries as
+    // you provision more bodies); do NOT rely on wildcards here.
     subjects: [
-      { id: "engram", cert_common_names: ["engram-service.*", "engram.*"] },
-      { id: "robot", cert_common_names: ["robot.*", "uav.*", "body.*"] },
-      { id: "observer", cert_common_names: ["observer.*", "analysis.*"] },
+      { id: "engram", cert_common_names: ["engram-service", "engram"] },
+      { id: "robot", cert_common_names: ["robot", "uav", "body"] },
+      { id: "observer", cert_common_names: ["observer", "analysis"] },
     ],
 
     // Bind rules to subjects. THE SAFETY INVARIANT: only `engram` holds a rule

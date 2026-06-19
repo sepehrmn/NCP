@@ -160,6 +160,22 @@ mod wire_tests {
         assert_eq!(cmd.channels["velocity_setpoint"].data.len(), 3);
     }
 
+    /// codec-bus-1: the decoder's readout populations (`vel_*`) are absent from
+    /// `pop_rates` here, so each component must fall to the NEUTRAL midpoint (0.0
+    /// for the symmetric ±1.5 range) — NOT the value-range low bound (-1.5 m/s,
+    /// full-reverse actuation that the governor's magnitude clamp would pass).
+    #[test]
+    fn codec_absent_population_maps_to_neutral_not_full_reverse() {
+        let codec = default_uav_velocity_codec();
+        let cmd = codec.decode(&Map::new(), 0.0, 0, "world", Mode::Active);
+        for c in &cmd.channels["velocity_setpoint"].data {
+            assert!(
+                c.abs() < 1e-9,
+                "absent population must decode to neutral 0.0, got {c}"
+            );
+        }
+    }
+
     /// A non-finite sensor sample must not poison the rate pipeline: a NaN error
     /// component encodes to the low bound of the rate range (fail-safe), never
     /// to a NaN rate.

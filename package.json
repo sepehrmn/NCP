@@ -2,7 +2,7 @@
   "name": "@sepehrmn/ncp",
   "version": "0.2.1",
   "description": "Canonical NCP (Neuro-Cybernetic Protocol) TypeScript types + transport-agnostic client. Wire-identical to the normative proto/ncp.proto contract (proto-native) and the Rust and Python peers.",
-  "license": "MIT",
+  "license": "MIT OR Apache-2.0",
   "type": "module",
   "repository": { "type": "git", "url": "git+https://github.com/sepehrmn/NCP.git" },
   "homepage": "https://github.com/sepehrmn/NCP#readme",
