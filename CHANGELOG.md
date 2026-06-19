@@ -7,9 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-Hardening pass against ROADMAP P0/P1/P2 and the full-repo review (`REVIEW_AND_PLAN.md`).
-No wire change — `ncp_version` stays `"0.2"`; all additions are additive APIs, a config
-fix, docs, and CI guards, so existing peers/vectors are unaffected.
+## [0.2.2] - 2026-06-19
+
+Hardening pass against ROADMAP P0/P1/P2 and a full-repo review. No wire change —
+`ncp_version` stays `"0.2"`; all additions are additive APIs, a config fix, docs,
+and CI guards, so existing peers/vectors are unaffected. Crates/package `0.2.2`.
 
 ### Security
 - **P0 / #7 — the per-plane ACL template now actually loads.** `deploy/zenoh-access-control.json5`
