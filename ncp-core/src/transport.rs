@@ -201,7 +201,13 @@ impl<T: ControlTransport, C: Controller> NeuroControlLoop<T, C> {
             }
         }
         let mut cmd = self.controller.step(sensor.as_ref(), self.dt_ms());
-        cmd.seq = self.seq;
+        // CommandFrame.seq echoes the originating SensorFrame.seq so the split-plane
+        // V<->A join pairs the action with the sensor that produced it (the normative
+        // invariant; an observer joining V to A on seq depends on it). The loop's own
+        // free-running tick counter is carried only on ControlStatus, below.
+        if let Some(s) = sensor.as_ref() {
+            cmd.seq = s.seq;
+        }
         let cmd = self
             .gov
             .govern(&cmd, sensor.as_ref(), now, self.last_sensor_t);
@@ -320,6 +326,54 @@ mod tests {
             cmd.mode,
             Mode::Hold,
             "a frozen sensor must trip the stale-sensor HOLD"
+        );
+    }
+
+    #[test]
+    fn command_seq_echoes_sensor_seq() {
+        // Normative invariant: CommandFrame.seq echoes the originating
+        // SensorFrame.seq (so the split-plane V<->A join pairs an action with the
+        // sensor that produced it), NOT the loop's free-running tick counter.
+        let transport = InProcessTransport::new();
+        let clock = Arc::new(Mutex::new(0.0_f64));
+        let clock2 = clock.clone();
+        let mut loop_ = NeuroControlLoop::new(
+            transport.clone(),
+            ReflexController::default(),
+            20.0,
+            SafetyLimits {
+                max_speed_mps: Some(1.5),
+                command_timeout_ms: 500.0,
+                ..Default::default()
+            },
+        )
+        .with_clock(Box::new(move || *clock2.lock().unwrap()));
+
+        // One sensor-less tick advances the loop's internal counter to 1.
+        let _ = loop_.tick();
+
+        // A sensor with a distinctive seq=7: the emitted command must carry seq=7
+        // (the sensor echo), not 1 (the loop counter).
+        let mut ch = crate::messages::Map::new();
+        ch.insert(
+            "pose_position".into(),
+            ChannelValue::vec3(1.0, 0.0, 0.0, Some("m")),
+        );
+        ch.insert(
+            "pose_velocity".into(),
+            ChannelValue::vec3(0.0, 0.0, 0.0, Some("m/s")),
+        );
+        transport.push_sensor(SensorFrame {
+            t: 0.1,
+            seq: 7,
+            channels: ch,
+            ..Default::default()
+        });
+        *clock.lock().unwrap() = 0.05;
+        let cmd = loop_.tick();
+        assert_eq!(
+            cmd.seq, 7,
+            "CommandFrame.seq must echo SensorFrame.seq, not the loop tick counter"
         );
     }
 }

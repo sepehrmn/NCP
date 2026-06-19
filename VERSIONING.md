@@ -48,8 +48,14 @@ A change that trips `WIRE`/`WIRE_JSON` **must** bump MAJOR (or MINOR while `0.x`
 
 ## Per-session version negotiation (target)
 
-Today the version check is a **local fail-closed reject** (`check_version`). The
-target (ROADMAP P1) is an explicit negotiation at `open_session`, modelled on
+Today `check_version` / `negotiate` are provided as **fail-closed library entry
+points**: a peer (or gateway) calls `negotiate(peer_version, peer_hash)` at session
+setup and refuses a mismatch (reject, never coerce). They are **not yet
+auto-invoked on the data-plane receive path** — there is no automatic per-frame or
+per-session version rejection wired into the transport, so a version-mismatched
+data-plane frame is currently handled by the deserializer (typically a parse
+failure / dropped frame), not an explicit version error. The target (ROADMAP P1)
+is to wire `negotiate` into an explicit `open_session` handshake, modelled on
 MCP's lifecycle:
 
 1. The client sends its `ncp_version` in `OpenSession`.

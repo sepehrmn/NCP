@@ -41,7 +41,7 @@ flowchart LR
 | Plane | Key | QoS | Purpose |
 |---|---|---|---|
 | **Control** | `{realm}/rpc` | reliable, request/reply (queryable) | session lifecycle |
-| **Perception** | `{realm}/session/{id}/sensor[/{name}]` | best-effort, conflate-to-latest (lossy-OK) | plant → brain |
+| **Perception** | `{realm}/session/{id}/sensor[/{name}]` | best-effort DROP (lossy-OK) | plant → brain |
 | **Action** | `{realm}/session/{id}/command[/{name}]` | express, RealTime, safety-gated (`mode`, `ttl_ms`) | brain → plant |
 | **Observation** | `{realm}/session/{id}/observation` | read-only pub/sub | free diagnostic tap |
 

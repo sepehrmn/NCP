@@ -698,6 +698,11 @@ pub struct CommandFrame {
     pub seq: i64,
     pub t: f64,
     pub frame_id: String,
+    // Fail-safe: a wire frame that OMITS `mode` deserializes to HOLD, never to an
+    // actuating mode — an untrusted/partial CommandFrame must not silently drive.
+    // (Programmatic `CommandFrame::default()` is unchanged; the controller always
+    // sets `mode` explicitly.)
+    #[serde(default = "default_command_mode")]
     pub mode: Mode,
     pub ttl_ms: f64,
     pub channels: Map<ChannelValue>,
@@ -708,6 +713,12 @@ pub struct CommandFrame {
     /// consumer that ignores `horizon` still reads `channels` (tick 0).
     pub horizon: Vec<Map<ChannelValue>>,
     pub horizon_dt_ms: Option<f64>,
+}
+
+/// Wire default for `CommandFrame.mode`: a frame that omits `mode` is HOLD, never
+/// an actuating mode (fail-safe deserialization of an untrusted/partial frame).
+fn default_command_mode() -> Mode {
+    Mode::Hold
 }
 
 impl Default for CommandFrame {
@@ -1026,5 +1037,18 @@ mod tests {
         assert!(negotiate(NCP_VERSION, Some("deadbeefdeadbeef")).is_err());
         // Version mismatch rejects regardless of the hash.
         assert!(negotiate("0.1", Some(CONTRACT_HASH)).is_err());
+    }
+
+    #[test]
+    fn command_frame_absent_mode_deserializes_to_hold() {
+        // Fail-safe: a wire CommandFrame that OMITS `mode` must NOT actuate. An
+        // untrusted/partial frame (no mode field) deserializes to HOLD, not Active.
+        let cmd: CommandFrame =
+            serde_json::from_str(r#"{"kind":"command_frame","seq":1}"#).expect("parses");
+        assert_eq!(
+            cmd.mode,
+            Mode::Hold,
+            "a CommandFrame with no `mode` must default to HOLD on the wire"
+        );
     }
 }

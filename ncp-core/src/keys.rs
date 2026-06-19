@@ -8,8 +8,8 @@
 //!
 //! ```text
 //! {realm}/rpc                                  control-plane RPC   (queryable)
-//! {realm}/session/{id}/sensor[/{name}]         perception plane    (pub/sub, DROP/conflate)
-//! {realm}/session/{id}/command[/{name}]         action plane        (pub/sub, reliable+TTL, safety-gated)
+//! {realm}/session/{id}/sensor[/{name}]         perception plane    (pub/sub, best-effort DROP)
+//! {realm}/session/{id}/command[/{name}]         action plane        (pub/sub, best-effort DROP + express; ttl_ms is plant-side, safety-gated)
 //! {realm}/session/{id}/observation              neural/diagnostic   (pub/sub, free observer tap)
 //! ```
 

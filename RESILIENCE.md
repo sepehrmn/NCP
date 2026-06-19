@@ -12,8 +12,8 @@ case**, not the only case.
 
 ## Per-plane threat model
 
-- **Perception plane** (`SensorFrame`, plant→controller; DROP +
-  conflate, reliability left at Zenoh default): *lossy-OK* — a dropped sample is fine if a fresher one arrives, until
+- **Perception plane** (`SensorFrame`, plant→controller; best-effort DROP,
+  reliability left at Zenoh default; no keep-last/conflation is configured on the wire): *lossy-OK* — a dropped sample is fine if a fresher one arrives, until
   arrival probability crosses a floor. The pressure here is **low bandwidth**
   (what to send when you can't send everything) and freshness.
 - **Action plane** (`CommandFrame`, controller→plant; express + DROP + RealTime):

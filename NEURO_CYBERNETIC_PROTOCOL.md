@@ -229,7 +229,7 @@ The **NEST brain is not split**: a closed sensorimotor loop is one
 
 ```text
 {realm}/rpc                              control-plane RPC   queryable, reliable
-{realm}/session/{id}/sensor[/{name}]     perception plane    pub/sub, DROP, conflate to latest (lossy-OK)
+{realm}/session/{id}/sensor[/{name}]     perception plane    pub/sub, best-effort DROP (lossy-OK)
 {realm}/session/{id}/command[/{name}]    action plane        pub/sub, express + DROP + RealTime, safety-gated
 {realm}/session/{id}/observation         neural / diagnostic pub/sub — free read-only observer tap
 ```
@@ -242,17 +242,23 @@ action plane is the only one with command authority (`ttl_ms`, `Mode.HOLD`/
 `seq`, not arrival time** (the DROP QoS on the perception plane makes arrival-time
 pairing unsound).
 
-NCP's per-plane QoS is **not invented** — it maps onto the standard ROS 2 / DDS
-QoS vocabulary, so a `rmw_zenoh` / DDS deployment can express the same contract:
+NCP's per-plane QoS **maps onto** the standard ROS 2 / DDS QoS vocabulary, so a
+`rmw_zenoh` / DDS deployment can express the same contract. What the Zenoh binding
+sets **today** is the Reliability/priority column only (`CongestionControl` +
+priority + `express`); the History / lifespan / deadline columns are the DDS QoS
+that would express the *same intent* but are **not currently configured on the
+Zenoh wire** (and `ttl_ms` is enforced plant-side by `CommandWatchdog`, not as a
+wire lifespan):
 
-| NCP plane | Reliability | History | NCP safety field | ROS 2 / DDS equivalent |
+| NCP plane | Reliability (set today) | History (DDS mapping, not set today) | NCP safety field | ROS 2 / DDS equivalent |
 |---|---|---|---|---|
-| perception (sensor) | best-effort (DROP) | keep-last(1) (conflate) | — | `BEST_EFFORT` + `KEEP_LAST(1)` |
-| action (command) | best-effort, express, RealTime | keep-last | `ttl_ms` | **`LIFESPAN`** (≡ `ttl_ms`) + `DEADLINE` for staleness |
+| perception (sensor) | best-effort (DROP), DataHigh | _(would be `KEEP_LAST(1)`)_ | — | `BEST_EFFORT` |
+| action (command) | best-effort (DROP), express, RealTime | _(would be `KEEP_LAST(1)`)_ | `ttl_ms` (plant-side) | `BEST_EFFORT`; `LIFESPAN`+`DEADLINE` would express `ttl_ms`/staleness |
 | control RPC / observation | reliable (BLOCK) | keep-all | — | `RELIABLE` |
-| liveness / fail-safe | — | — | `Mode.HOLD`/`ESTOP`, `command_timeout_ms` | `LIVELINESS` + `DEADLINE` watchdog |
+| liveness / fail-safe | — | — | `Mode.HOLD`/`ESTOP`, `command_timeout_ms` | `LIVELINESS` + `DEADLINE` watchdog (plant-side) |
 
-`ttl_ms` **is** DDS `LIFESPAN`; the genuinely NCP-specific part is only the `mode`
+`ttl_ms` is the application-layer analogue of DDS `LIFESPAN` (enforced plant-side,
+not on the wire); the genuinely NCP-specific part is only the `mode`
 enum as an explicit wire authority. Mapping to these names keeps NCP interoperable
 with a ROS 2/DDS stack rather than diverging from it.
 
