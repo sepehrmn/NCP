@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.6] - 2026-06-20
+
+Rebrand-only release. **No wire shape change** — `ncp_version` stays `"0.2"` and the JSON/binary
+vectors are unchanged. **Compat note:** `CONTRACT_HASH` rebumped (`4c31db5c8eafbcf7` →
+`07f829cabbd1684a`) because the proto's issue-reference comment changed; peers that exchange the
+contract hash in `negotiate()` must run the same release, so upgrade the fleet together — this is
+the designed contract-revision signal, not a wire break.
+
 - Repointed all repository URLs from `github.com/sepehrmn/NCP` to
   `github.com/sepahead/NCP` (GitHub account rename); the `@sepehrmn/ncp` npm
   package name is unchanged (it is the published identity pinned by consumers).
@@ -270,7 +278,8 @@ version guard, so peers must speak `0.2`.
   `ci.yml`, `release.yml`, README badge), unblocking the fmt/clippy/test gate and
   the dependabot dependency PRs.
 
-[Unreleased]: https://github.com/sepahead/NCP/compare/v0.2.5...HEAD
+[Unreleased]: https://github.com/sepahead/NCP/compare/v0.2.6...HEAD
+[0.2.6]: https://github.com/sepahead/NCP/compare/v0.2.5...v0.2.6
 [0.2.5]: https://github.com/sepahead/NCP/compare/v0.2.4...v0.2.5
 [0.2.4]: https://github.com/sepahead/NCP/compare/v0.2.3...v0.2.4
 [0.2.3]: https://github.com/sepahead/NCP/compare/v0.2.2...v0.2.3
