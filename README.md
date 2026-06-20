@@ -76,8 +76,8 @@ One normative wire ([`proto/ncp.proto`](proto/ncp.proto) / [`NEURO_CYBERNETIC_PR
 
 | Peer | Install / depend | Open session · step · observe | Transport(s) |
 |---|---|---|---|
-| **`ncp-core`** (Rust) | `ncp-core = { git = "https://github.com/sepahead/NCP", tag = "v0.2.7" }` | Build `OpenSession` / `CommandFrame`, `serde_json::to_string` → wire — see [`ncp-core/README.md`](ncp-core/README.md) | none (serde-only; in-process bus + control loop) |
-| **`ncp-zenoh`** (Rust transport) | `ncp-zenoh = { git = "https://github.com/sepahead/NCP", tag = "v0.2.7" }` | `let bus = ZenohBus::open().await?; let client = ZenohNcpClient::new(bus); client.open(&msg).await?` — see [`ncp-zenoh/README.md`](ncp-zenoh/README.md) | Zenoh (queryable RPC + per-plane pub/sub) |
+| **`ncp-core`** (Rust) | `ncp-core = { git = "https://github.com/sepahead/NCP", tag = "v0.2.8" }` | Build `OpenSession` / `CommandFrame`, `serde_json::to_string` → wire — see [`ncp-core/README.md`](ncp-core/README.md) | none (serde-only; in-process bus + control loop) |
+| **`ncp-zenoh`** (Rust transport) | `ncp-zenoh = { git = "https://github.com/sepahead/NCP", tag = "v0.2.8" }` | `let bus = ZenohBus::open().await?; let client = ZenohNcpClient::new(bus); client.open(&msg).await?` — see [`ncp-zenoh/README.md`](ncp-zenoh/README.md) | Zenoh (queryable RPC + per-plane pub/sub) |
 | **`ncp-python`** (Python / PyO3) | `maturin develop -m ncp-python/Cargo.toml --features extension-module` | `import ncp; ncp.Keys("engram/ncp").command("uav3"); ncp.decode_command(...)` — see [`ncp-python/README.md`](ncp-python/README.md) | transport-agnostic (JSON wire via `ncp-core`) |
 | **`ncp-cpp`** (C / C++ ABI) | `cargo build -p ncp-cpp` → link `libncp_cpp`, `#include "ncp.h"` | `char *v = ncp_version(); /* ... */ ncp_string_free(v);` — see [`ncp-cpp/README.md`](ncp-cpp/README.md) | transport-agnostic (JSON in/out over the C ABI) |
 | **`ncp-ts`** (`@sepehrmn/ncp`, TypeScript) | `npm install @sepehrmn/ncp` | `const ncp = new NeuroSimClient(transport.send); await ncp.open(...); await ncp.step(...); await ncp.close(...)` — see [`ncp-ts/README.md`](ncp-ts/README.md) | WebSocket (`WebSocketNeuroSim`) or any `Send` bus |
@@ -88,8 +88,8 @@ NCP is **not yet published to crates.io** (pre-1.0). Depend on it as a pinned gi
 
 ```toml
 [dependencies]
-ncp-core  = { git = "https://github.com/sepahead/NCP", tag = "v0.2.7" }
-ncp-zenoh = { git = "https://github.com/sepahead/NCP", tag = "v0.2.7" }  # transport, optional
+ncp-core  = { git = "https://github.com/sepahead/NCP", tag = "v0.2.8" }
+ncp-zenoh = { git = "https://github.com/sepahead/NCP", tag = "v0.2.8" }  # transport, optional
 ```
 
 A minimal, wire-correct snippet using `ncp-core` — build a safety-gated `CommandFrame`, then refuse an incompatible peer version:
@@ -137,13 +137,13 @@ python scripts/bench_overlap.py    # transport/compute overlap (GIL) measurement
 - [`GOVERNANCE.md`](GOVERNANCE.md) — the governance model, the mechanical interop gates, and the path to a neutral home.
 - [`SECURITY.md`](SECURITY.md) — threat model, the disclosed action-plane limitation, and the TLS + ACL enablement steps.
 - [`CONTRIBUTING.md`](CONTRIBUTING.md) — how to build, test, and propose changes.
-- [`CHANGELOG.md`](CHANGELOG.md) — per-release notes (current: `v0.2.7`).
+- [`CHANGELOG.md`](CHANGELOG.md) — per-release notes (current: `v0.2.8`).
 
 ## Status
 
 NCP is **pre-1.0 and experimental.** Specifically:
 
-- **The wire may change.** Minor versions are treated as breaking; the version guard fails closed rather than coercing. **Pin the latest tag** (`tag = "v0.2.7"` above — the wire is `0.2`, with `v0.2.0` the buf-breaking baseline) for anything you build against.
+- **The wire may change.** Minor versions are treated as breaking; the version guard fails closed rather than coercing. **Pin the latest tag** (`tag = "v0.2.8"` above — the wire is `0.2`, with `v0.2.0` the buf-breaking baseline) for anything you build against.
 - **Single reference implementation.** `proto/ncp.proto` is the normative contract; `ncp-core` (Rust) is the reference implementation and Python/C/TS are bindings off the same contract, verified by field-set-parity drift guards — not yet a multi-implementation conformance program.
 - **The action plane is currently unauthenticated.** On an open realm it is effectively world-writable: anyone who can reach the realm can publish commands. The local `mode`/`ttl_ms` governor is defense-in-depth, **not** network security. Deploy only on a trusted, closed realm. See [`SECURITY.md`](SECURITY.md) and the P0 work in [`ROADMAP.md`](ROADMAP.md).
 

@@ -20,7 +20,7 @@ paper-reproduction claim, and the provenance discriminators are mandatory and
 fail-closed precisely to keep that boundary machine-checkable. It is a single
 reference SDK (proto-native — `proto/ncp.proto` normative, `ncp-core` the Rust
 reference implementation; Python via PyO3, TypeScript types via ts-rs, a C ABI for
-C/C++) with field-set-parity drift guards, not yet a multi-implementation program. It is **pre-1.0** (current wire `0.2`, released as `v0.2.0`/`v0.2.1`/`v0.2.2`/`v0.2.3`/`v0.2.4`/`v0.2.5`/`v0.2.6`/`v0.2.7`): the wire
+C/C++) with field-set-parity drift guards, not yet a multi-implementation program. It is **pre-1.0** (current wire `0.2`, released as `v0.2.0`/`v0.2.1`/`v0.2.2`/`v0.2.3`/`v0.2.4`/`v0.2.5`/`v0.2.6`/`v0.2.7`/`v0.2.8`): the wire
 may change, minor versions are treated as breaking, and the version guard fails
 rather than silently coercing. NCP's contribution is a typed, provenance-first, safety-gated wire
 contract — not novel control science and not the first SNN-in-the-loop robot loop
@@ -155,7 +155,7 @@ interop gates + the neutral-home path.
   maturin is the canonical PyO3-to-PyPI path; a published wheel is table stakes for
   the Python peer to be usable without a Rust toolchain.
 - **Zenodo DOI via the GitHub–Zenodo archive.** Tagged releases now exist
-  (`v0.2.0`/`v0.2.1`/`v0.2.2`/`v0.2.3`/`v0.2.4`/`v0.2.5`/`v0.2.6`/`v0.2.7`); enable the GitHub–Zenodo integration so a release is archived
+  (`v0.2.0`/`v0.2.1`/`v0.2.2`/`v0.2.3`/`v0.2.4`/`v0.2.5`/`v0.2.6`/`v0.2.7`/`v0.2.8`); enable the GitHub–Zenodo integration so a release is archived
   and a DOI minted, then add it to the existing `CITATION.cff`. *Why:* a DOI is the
   minimum citable artifact; the repo currently has a `CITATION.cff` with no DOI.
 - **Defer JOSS.** A JOSS submission is viable only after roughly six months of

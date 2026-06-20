@@ -29,8 +29,8 @@ resolves the repo root from its own location.
 
 ```bash
 scripts/check.sh                         # full local gate (mirrors CI)
-scripts/check-consumer-pins.sh v0.2.7    # verify all consumers pin v0.2.7
-scripts/repin-ncp.sh v0.2.7              # bump all consumers to v0.2.7
+scripts/check-consumer-pins.sh v0.2.8    # verify all consumers pin v0.2.8
+scripts/repin-ncp.sh v0.2.8              # bump all consumers to v0.2.8
 python3 scripts/check_proto_schema_parity.py
 ```
 
