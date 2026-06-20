@@ -143,6 +143,9 @@ before/after numbers in your PR.
 - Update docs, `CHANGELOG.md`, and tests when your change affects behavior or any
   public/wire contract.
 - Make sure the mandatory gates pass before requesting review.
+- Do not add Claude, AI assistants, or agents as commit/PR co-authors — no
+  `Co-Authored-By:` trailer and no "Generated with Claude Code" / 🤖 line in
+  commit messages or pull-request descriptions.
 
 ## Developer Certificate of Origin (sign-off)
 
