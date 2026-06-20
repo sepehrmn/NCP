@@ -70,6 +70,18 @@ Because the data planes are pub/sub, **observers attach for free**: an analysis 
 | **`ncp-ts`** (`@sepehrmn/ncp`) | TypeScript package: wire types generated from `ncp-core` (ts-rs) + a transport-agnostic client and a WebSocket transport — wire-identical to the Rust/Python peers. |
 | **`ncp-gateway`** | The commander's Rust edge (reference deployment, e.g. an Engram/NEST host): runs the Zenoh bus and bridges control-plane RPC to a simulation `SessionService` over a localhost socket (NEST stays Python). |
 
+## Polyglot quick-start
+
+One normative wire ([`proto/ncp.proto`](proto/ncp.proto) / [`NEURO_CYBERNETIC_PROTOCOL.md`](NEURO_CYBERNETIC_PROTOCOL.md)); pick the peer for your language. Each per-peer README below is the deep doc — this matrix is the index.
+
+| Peer | Install / depend | Open session · step · observe | Transport(s) |
+|---|---|---|---|
+| **`ncp-core`** (Rust) | `ncp-core = { git = "https://github.com/sepahead/NCP", tag = "v0.2.5" }` | Build `OpenSession` / `CommandFrame`, `serde_json::to_string` → wire — see [`ncp-core/README.md`](ncp-core/README.md) | none (serde-only; in-process bus + control loop) |
+| **`ncp-zenoh`** (Rust transport) | `ncp-zenoh = { git = "https://github.com/sepahead/NCP", tag = "v0.2.5" }` | `let bus = ZenohBus::open().await?; let client = ZenohNcpClient::new(bus); client.open(&msg).await?` — see [`ncp-zenoh/README.md`](ncp-zenoh/README.md) | Zenoh (queryable RPC + per-plane pub/sub) |
+| **`ncp-python`** (Python / PyO3) | `maturin develop -m ncp-python/Cargo.toml --features extension-module` | `import ncp; ncp.Keys("engram/ncp").command("uav3"); ncp.decode_command(...)` — see [`ncp-python/README.md`](ncp-python/README.md) | transport-agnostic (JSON wire via `ncp-core`) |
+| **`ncp-cpp`** (C / C++ ABI) | `cargo build -p ncp-cpp` → link `libncp_cpp`, `#include "ncp.h"` | `char *v = ncp_version(); /* ... */ ncp_string_free(v);` — see [`ncp-cpp/README.md`](ncp-cpp/README.md) | transport-agnostic (JSON in/out over the C ABI) |
+| **`ncp-ts`** (`@sepehrmn/ncp`, TypeScript) | `npm install @sepehrmn/ncp` | `const ncp = new NeuroSimClient(transport.send); await ncp.open(...); await ncp.step(...); await ncp.close(...)` — see [`ncp-ts/README.md`](ncp-ts/README.md) | WebSocket (`WebSocketNeuroSim`) or any `Send` bus |
+
 ## Quickstart
 
 NCP is **not yet published to crates.io** (pre-1.0). Depend on it as a pinned git dependency:
