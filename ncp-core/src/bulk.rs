@@ -155,6 +155,14 @@ pub enum BulkError {
     Overflow,
     /// A column name was not valid utf-8.
     BadName,
+    /// The parallel numeric columns (`times`/`values`/`senders`) disagree in
+    /// length — they index the same events/samples, so a mismatch is corrupt.
+    ColumnLengthMismatch {
+        a: &'static str,
+        a_len: usize,
+        b: &'static str,
+        b_len: usize,
+    },
 }
 
 impl std::fmt::Display for BulkError {
@@ -171,6 +179,10 @@ impl std::fmt::Display for BulkError {
             BulkError::OutOfBounds => write!(f, "bulk directory offset out of bounds"),
             BulkError::Overflow => write!(f, "bulk column size overflow"),
             BulkError::BadName => write!(f, "bulk column name not valid utf-8"),
+            BulkError::ColumnLengthMismatch { a, a_len, b, b_len } => write!(
+                f,
+                "bulk parallel columns disagree: {a} has {a_len}, {b} has {b_len}"
+            ),
         }
     }
 }
@@ -198,6 +210,36 @@ impl BulkBlock {
     /// Look up a column by name.
     pub fn get(&self, name: &str) -> Option<&Column> {
         self.columns.iter().find(|(n, _)| n == name).map(|(_, c)| c)
+    }
+
+    /// The parallel numeric columns (`times`/`values`/`senders`) index the same
+    /// events/samples, so every PRESENT, non-empty one MUST agree in length. A
+    /// mismatch is a corrupt/hostile block — fail closed rather than silently
+    /// pairing arrays of different lengths.
+    pub fn check_parallel(&self) -> Result<(), BulkError> {
+        let mut expected: Option<(&'static str, usize)> = None;
+        for name in ["times", "values", "senders"] {
+            let n = match self.get(name) {
+                Some(c) => c.len(),
+                None => continue,
+            };
+            if n == 0 {
+                continue;
+            }
+            match expected {
+                None => expected = Some((name, n)),
+                Some((a, a_len)) if a_len != n => {
+                    return Err(BulkError::ColumnLengthMismatch {
+                        a,
+                        a_len,
+                        b: name,
+                        b_len: n,
+                    });
+                }
+                _ => {}
+            }
+        }
+        Ok(())
     }
 
     /// Serialize to the packed little-endian block.
@@ -392,6 +434,7 @@ pub fn observation_from_bulk(
     block: &[u8],
 ) -> Result<Observation, BulkError> {
     let b = BulkBlock::decode(block)?;
+    b.check_parallel()?; // cross-column length invariant: fail closed on a corrupt block
     let mut obs = Observation {
         port: port.into(),
         target: target.into(),
@@ -429,6 +472,29 @@ mod tests {
             .with("times", Column::F64(vec![]))
             .with("senders", Column::I64(vec![]));
         assert_eq!(BulkBlock::decode(&with_empty.encode()).unwrap(), with_empty);
+    }
+
+    #[test]
+    fn decode_rejects_unequal_parallel_columns() {
+        // times has 3, senders has 2 -> corrupt parallel block -> fail closed.
+        let bad = BulkBlock::new()
+            .with("times", Column::F64(vec![0.0, 1.0, 2.0]))
+            .with("senders", Column::I64(vec![1, 2]));
+        let err =
+            observation_from_bulk("spk", "pop", Observable::Spikes, None, None, &bad.encode())
+                .unwrap_err();
+        assert!(
+            matches!(err, BulkError::ColumnLengthMismatch { .. }),
+            "unequal parallel columns must fail closed, got {err:?}"
+        );
+        // Equal lengths still round-trip cleanly.
+        let ok = BulkBlock::new()
+            .with("times", Column::F64(vec![0.0, 1.0]))
+            .with("senders", Column::I64(vec![1, 2]));
+        assert!(
+            observation_from_bulk("spk", "pop", Observable::Spikes, None, None, &ok.encode())
+                .is_ok()
+        );
     }
 
     #[test]

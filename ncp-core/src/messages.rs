@@ -98,7 +98,9 @@ pub enum SimMode {
 }
 
 /// Controller mode (the safety-critical action authority lives here).
-#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Debug, Default)]
+// Deserialize is hand-written below (fail-safe: an unknown mode string -> Hold,
+// never errors the whole frame). Serialize stays derived; the rename attrs apply.
+#[derive(Serialize, Clone, Copy, PartialEq, Eq, Debug, Default)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub enum Mode {
     #[serde(rename = "init")]
@@ -110,6 +112,26 @@ pub enum Mode {
     Hold,
     #[serde(rename = "estop")]
     Estop,
+}
+
+impl<'de> Deserialize<'de> for Mode {
+    /// Fail-safe: an unrecognized `mode` string deserializes to `Hold` rather than
+    /// erroring the whole `CommandFrame` — a peer that sends a mode this build does
+    /// not recognize must neither actuate nor have its frame dropped. (An ABSENT
+    /// `mode` is handled separately by the field-level `default_command_mode`.)
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        Ok(match s.as_str() {
+            "init" => Mode::Init,
+            "active" => Mode::Active,
+            "hold" => Mode::Hold,
+            "estop" => Mode::Estop,
+            _ => Mode::Hold,
+        })
+    }
 }
 
 /// Hierarchical entity role for addressing sensors/actuators.
@@ -1050,5 +1072,21 @@ mod tests {
             Mode::Hold,
             "a CommandFrame with no `mode` must default to HOLD on the wire"
         );
+    }
+
+    #[test]
+    fn command_frame_unknown_mode_deserializes_to_hold() {
+        // Fail-safe: an UNRECOGNIZED mode string must HOLD — not actuate, and not
+        // error the whole frame. A peer sending a mode this build does not know
+        // (e.g. a future "creep") degrades safely to HOLD.
+        let cmd: CommandFrame =
+            serde_json::from_str(r#"{"kind":"command_frame","seq":1,"mode":"creep"}"#)
+                .expect("unknown mode must parse, not error the frame");
+        assert_eq!(cmd.mode, Mode::Hold, "unknown mode -> HOLD (fail-safe)");
+        // Known modes still map and serialize back to their lowercase wire string.
+        let active: CommandFrame =
+            serde_json::from_str(r#"{"kind":"command_frame","mode":"active"}"#).unwrap();
+        assert_eq!(active.mode, Mode::Active);
+        assert!(serde_json::to_string(&active).unwrap().contains("\"active\""));
     }
 }
