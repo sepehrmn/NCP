@@ -1014,6 +1014,47 @@ pub fn validate(json: &serde_json::Value) -> Result<(), ValidationError> {
             )));
         }
     }
+    // Scientific-boundary value pins: these discriminators are NOT free booleans.
+    // An NCP frame is a control/simulation artifact, never a calibrated posterior
+    // — so where they appear they MUST read calibrated_posterior=false and
+    // is_simulation_output=true. A peer asserting otherwise is rejected, not
+    // silently trusted. (Mirrors the proto "always false"/"always true" contract
+    // and the ObservationFrame::default() invariant.)
+    match kind {
+        "observation_frame" => check_scientific_boundary(obj, kind)?,
+        "session_opened" => {
+            if let Some(p) = obj.get("provenance").and_then(|v| v.as_object()) {
+                check_scientific_boundary(p, "session_opened.provenance")?;
+            }
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
+/// Enforce the scientific-boundary discriminators where present: an absent field
+/// is fine (serde default supplies the safe value), but a present field carrying
+/// the wrong value is a typed rejection — never coerced.
+fn check_scientific_boundary(
+    obj: &serde_json::Map<String, serde_json::Value>,
+    ctx: &str,
+) -> Result<(), ValidationError> {
+    if let Some(v) = obj.get("calibrated_posterior") {
+        if v.as_bool() != Some(false) {
+            return Err(ValidationError(format!(
+                "{ctx}: calibrated_posterior must be false (an NCP frame is sim \
+                 output, never a calibrated posterior), got {v}"
+            )));
+        }
+    }
+    if let Some(v) = obj.get("is_simulation_output") {
+        if v.as_bool() != Some(true) {
+            return Err(ValidationError(format!(
+                "{ctx}: is_simulation_output must be true (NCP frames are \
+                 simulation output), got {v}"
+            )));
+        }
+    }
     Ok(())
 }
 

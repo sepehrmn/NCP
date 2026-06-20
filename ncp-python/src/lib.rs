@@ -159,6 +159,29 @@ fn govern(
 #[pyfunction]
 fn validate(kind: &str, json: &str) -> PyResult<String> {
     use ncp_core::*;
+    // Run the CANONICAL, kind-aware checks first: required fields + the
+    // scientific-boundary value pins (calibrated_posterior=false /
+    // is_simulation_output=true). The typed serde round-trip below alone does NOT
+    // enforce these — a missing required field would silently default, and a
+    // tampered discriminator would round-trip clean. (Previously this binding
+    // skipped ncp_core::validate entirely, so the Python wire check was weaker
+    // than the Rust reference.)
+    let mut value: serde_json::Value = serde_json::from_str(json).map_err(val)?;
+    match value.as_object_mut() {
+        Some(m) => match m.get("kind") {
+            Some(serde_json::Value::String(k)) if k != kind => {
+                return Err(PyValueError::new_err(format!(
+                    "kind mismatch: argument {kind:?} but body says {k:?}"
+                )));
+            }
+            _ => {
+                m.insert("kind".into(), serde_json::Value::String(kind.into()));
+            }
+        },
+        None => return Err(PyValueError::new_err("NCP message is not a JSON object")),
+    }
+    ncp_core::validate(&value).map_err(|e| PyValueError::new_err(e.to_string()))?;
+
     macro_rules! rt {
         ($t:ty) => {{
             let v: $t = serde_json::from_str(json).map_err(val)?;
@@ -177,6 +200,7 @@ fn validate(kind: &str, json: &str) -> PyResult<String> {
         "sensor_frame" => rt!(SensorFrame),
         "command_frame" => rt!(CommandFrame),
         "control_status" => rt!(ControlStatus),
+        "link_status" => rt!(LinkStatus),
         "capabilities" => rt!(Capabilities),
         other => Err(PyValueError::new_err(format!(
             "unknown NCP message kind {other:?}"

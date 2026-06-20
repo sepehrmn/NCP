@@ -234,4 +234,48 @@ mod wire_tests {
         let fwd = serde_json::json!({"kind": "step_request", "session_id": "s1", "future": 7});
         assert!(validate(&fwd).is_ok());
     }
+
+    /// `validate()` pins the scientific-boundary discriminators: a frame asserting
+    /// it is a calibrated posterior (or NOT sim output) is rejected, not trusted.
+    #[test]
+    fn validate_pins_scientific_boundary() {
+        // observation_frame: a tampered calibrated_posterior=true is rejected.
+        let lie = serde_json::json!({
+            "kind": "observation_frame", "session_id": "s1", "calibrated_posterior": true
+        });
+        assert!(
+            validate(&lie).is_err(),
+            "calibrated_posterior=true must be rejected"
+        );
+        let lie2 = serde_json::json!({
+            "kind": "observation_frame", "session_id": "s1", "is_simulation_output": false
+        });
+        assert!(
+            validate(&lie2).is_err(),
+            "is_simulation_output=false must be rejected"
+        );
+        // The honest default values pass; absent fields also pass.
+        let ok = serde_json::json!({
+            "kind": "observation_frame", "session_id": "s1",
+            "calibrated_posterior": false, "is_simulation_output": true
+        });
+        assert!(validate(&ok).is_ok());
+        let absent = serde_json::json!({"kind": "observation_frame", "session_id": "s1"});
+        assert!(validate(&absent).is_ok());
+
+        // session_opened: the pin reaches into the nested provenance object...
+        let bad_prov = serde_json::json!({
+            "kind": "session_opened", "session_id": "s1",
+            "provenance": {"network_ref": "n", "backend": "b", "is_simulation_output": false}
+        });
+        assert!(
+            validate(&bad_prov).is_err(),
+            "tampered provenance.is_simulation_output must be rejected"
+        );
+        // ...and a null provenance (the nullable wire form) is simply skipped.
+        let null_prov = serde_json::json!({
+            "kind": "session_opened", "session_id": "s1", "provenance": null
+        });
+        assert!(validate(&null_prov).is_ok());
+    }
 }

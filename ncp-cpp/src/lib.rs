@@ -289,6 +289,24 @@ pub unsafe extern "C" fn ncp_validate(kind: *const c_char, json: *const c_char) 
         let (Some(kind), Some(json)) = (cstr_in(kind), cstr_in(json)) else {
             return std::ptr::null_mut();
         };
+        // Canonical kind-aware checks first (required fields + scientific-boundary
+        // value pins) — the typed round-trip alone would silently default a
+        // missing required field and round-trip a tampered discriminator clean.
+        let Ok(mut value) = serde_json::from_str::<serde_json::Value>(json) else {
+            return std::ptr::null_mut();
+        };
+        match value.as_object_mut() {
+            Some(m) => match m.get("kind") {
+                Some(serde_json::Value::String(k)) if k != kind => return std::ptr::null_mut(),
+                _ => {
+                    m.insert("kind".into(), serde_json::Value::String(kind.into()));
+                }
+            },
+            None => return std::ptr::null_mut(),
+        }
+        if ncp_core::validate(&value).is_err() {
+            return std::ptr::null_mut();
+        }
         macro_rules! rt {
             ($t:ty) => {
                 match serde_json::from_str::<$t>(json).and_then(|v| serde_json::to_string(&v)) {
@@ -309,6 +327,7 @@ pub unsafe extern "C" fn ncp_validate(kind: *const c_char, json: *const c_char) 
             "sensor_frame" => rt!(SensorFrame),
             "command_frame" => rt!(CommandFrame),
             "control_status" => rt!(ControlStatus),
+            "link_status" => rt!(LinkStatus),
             "capabilities" => rt!(Capabilities),
             _ => std::ptr::null_mut(),
         }
