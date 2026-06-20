@@ -151,6 +151,9 @@ pub struct NeuroControlLoop<T: ControlTransport, C: Controller> {
     gov: SafetyGovernor,
     now_fn: Box<dyn Fn() -> f64 + Send>,
     seq: i64,
+    /// Link-health monitor over the inbound sensor `seq` stream — feeds the
+    /// HOLD->ESTOP jam escalation (a sustained loss burst latches ESTOP).
+    link: crate::resilience::LinkMonitor,
     last_sensor_t: Option<f64>,
     /// Last accepted sensor's `(t, seq)`, to detect a frozen/cached stream. The
     /// watchdog clock (`last_sensor_t`) only advances when the sensor STRICTLY
@@ -168,6 +171,7 @@ impl<T: ControlTransport, C: Controller> NeuroControlLoop<T, C> {
             gov: SafetyGovernor::new(safety),
             now_fn: Box::new(monotonic_secs),
             seq: 0,
+            link: crate::resilience::LinkMonitor::with_defaults("ncp-loop"),
             last_sensor_t: None,
             last_sensor_ts: None,
         }
@@ -198,6 +202,9 @@ impl<T: ControlTransport, C: Controller> NeuroControlLoop<T, C> {
             if advanced {
                 self.last_sensor_t = Some(now);
                 self.last_sensor_ts = Some((s.t, s.seq));
+                // Feed the link monitor only on a genuinely-new sensor (a frozen
+                // re-delivery is a duplicate no-op in the monitor regardless).
+                self.link.on_seq(s.seq);
             }
         }
         let mut cmd = self.controller.step(sensor.as_ref(), self.dt_ms());
@@ -208,15 +215,29 @@ impl<T: ControlTransport, C: Controller> NeuroControlLoop<T, C> {
         if let Some(s) = sensor.as_ref() {
             cmd.seq = s.seq;
         }
-        let cmd = self
+        // Escalate to a latched ESTOP if the link monitor reports a jam (a sustained
+        // loss burst): a collapsed link must de-energize to safe, not sit in
+        // self-clearing HOLD. Checked every tick so the latch persists once tripped.
+        self.gov.note_link(self.link.is_burst());
+        let mut cmd = self
             .gov
             .govern(&cmd, sensor.as_ref(), now, self.last_sensor_t);
+        // Couple the emitted deadline to the loop period: a command must outlive at
+        // least the next tick, or a slow (sub-~5 Hz) loop would expire every command
+        // before its successor arrives and chatter HOLD on a healthy link.
+        cmd.ttl_ms = cmd.ttl_ms.max(self.dt_ms() * 2.0);
         self.transport.send_command(&cmd);
+        // loop_latency_ms is a real health field: emit the measured tick cost (not a
+        // constant 0.0) and flag an overrun past the loop period in `note`.
+        let loop_latency_ms = ((self.now_fn)() - now) * 1000.0;
         self.transport.send_status(&ControlStatus {
             seq: self.seq,
             t: now,
             mode: cmd.mode,
+            loop_latency_ms,
             safety_ok: self.gov.safety_ok(),
+            note: (loop_latency_ms > self.dt_ms())
+                .then(|| format!("overrun: {loop_latency_ms:.1}ms > {:.1}ms", self.dt_ms())),
             ..Default::default()
         });
         self.seq += 1;
@@ -374,6 +395,92 @@ mod tests {
         assert_eq!(
             cmd.seq, 7,
             "CommandFrame.seq must echo SensorFrame.seq, not the loop tick counter"
+        );
+    }
+
+    #[test]
+    fn link_jam_escalates_to_latched_estop() {
+        // A sustained loss burst on the sensor seq stream must latch ESTOP via the
+        // loop's LinkMonitor -> SafetyGovernor::note_link escalation (not mere HOLD).
+        let transport = InProcessTransport::new();
+        let clock = Arc::new(Mutex::new(0.0_f64));
+        let clock2 = clock.clone();
+        let mut loop_ = NeuroControlLoop::new(
+            transport.clone(),
+            ReflexController::default(),
+            20.0,
+            // Huge command_timeout so the stale-sensor HOLD path can't mask the jam.
+            SafetyLimits {
+                command_timeout_ms: 100_000.0,
+                ..Default::default()
+            },
+        )
+        .with_clock(Box::new(move || *clock2.lock().unwrap()));
+
+        let frame = |t: f64, seq: i64| {
+            let mut m = crate::messages::Map::new();
+            m.insert(
+                "pose_position".into(),
+                ChannelValue::vec3(0.1, 0.0, 0.0, Some("m")),
+            );
+            m.insert(
+                "pose_velocity".into(),
+                ChannelValue::vec3(0.0, 0.0, 0.0, Some("m/s")),
+            );
+            SensorFrame {
+                t,
+                seq,
+                channels: m,
+                ..Default::default()
+            }
+        };
+        for (i, seq) in [0_i64, 1, 2, 50].into_iter().enumerate() {
+            let t = (i as f64 + 1.0) * 0.05;
+            *clock.lock().unwrap() = t;
+            transport.push_sensor(frame(t, seq));
+            let cmd = loop_.tick();
+            if seq == 50 {
+                assert_eq!(
+                    cmd.mode,
+                    Mode::Estop,
+                    "a sensor-seq jam must escalate to ESTOP"
+                );
+            }
+        }
+        // Latched: a subsequent clean frame must STILL be ESTOP.
+        *clock.lock().unwrap() = 0.30;
+        transport.push_sensor(frame(0.30, 51));
+        assert_eq!(
+            loop_.tick().mode,
+            Mode::Estop,
+            "jam ESTOP must latch until reset"
+        );
+    }
+
+    #[test]
+    fn loop_latency_ms_is_measured() {
+        // A clock advancing per read => the post-send read exceeds the tick-start
+        // read, so loop_latency_ms is a real measured value, not a constant 0.0.
+        let transport = InProcessTransport::new();
+        let clock = Arc::new(Mutex::new(0.0_f64));
+        let clock2 = clock.clone();
+        let mut loop_ = NeuroControlLoop::new(
+            transport.clone(),
+            ReflexController::default(),
+            20.0,
+            SafetyLimits::default(),
+        )
+        .with_clock(Box::new(move || {
+            let mut t = clock2.lock().unwrap();
+            *t += 0.001; // +1 ms per read
+            *t
+        }));
+        let _ = loop_.tick();
+        let st = transport.statuses().pop().expect("a status was emitted");
+        assert!(
+            st.loop_latency_ms > 0.0,
+            "loop_latency_ms must be a measured value, got {}",
+            st.loop_latency_ms
         );
     }
 }

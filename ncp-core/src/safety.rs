@@ -163,6 +163,18 @@ impl SafetyGovernor {
         self.estop
     }
 
+    /// Latch ESTOP when the link monitor reports a sustained loss burst (a jam) —
+    /// the documented Layer-3 fail-safe escalation. A collapsed link is NOT a
+    /// transient HOLD; it de-energizes to a latched safe state until a supervisor
+    /// [`reset`]s (an operator-supplied loss-rate threshold may gate this too, but
+    /// the CUSUM `burst` is the trip today). Without this, a jammed craft sits in
+    /// self-clearing HOLD forever while the link is dead.
+    pub fn note_link(&mut self, burst: bool) {
+        if burst {
+            self.estop = true; // latch
+        }
+    }
+
     /// Whether the last governed command was safe. False under a latched ESTOP or a
     /// config-level fail-closed (undeclared limit channel). The loop reports this
     /// in `ControlStatus.safety_ok`.
@@ -313,6 +325,31 @@ impl SafetyGovernor {
                 out.horizon.truncate(safe_len);
             }
         }
+
+        // Geofence horizon look-ahead: the speed-clamped horizon is replayed
+        // open-loop through a dropout, so if the plant is within one horizon's worth
+        // of travel of the fence, that replay could cross it unchecked (the tick-0
+        // check above only guards the current position). Truncate the horizon when
+        // near the fence so replay HOLDs; tick-0 still actuates. (When here, the
+        // geofence block above has already ensured `r <= radius` and a finite `r`.)
+        if let Some(radius) = self.limits.geofence_radius_m {
+            if radius > 0.0 && !out.horizon.is_empty() {
+                if let Some(pos) = sensor.and_then(|s| s.channels.get(&self.position_channel)) {
+                    let r = pos.data.iter().map(|c| c * c).sum::<f64>().sqrt();
+                    let dt_s = command.horizon_dt_ms.unwrap_or(0.0) / 1000.0;
+                    let n = out.horizon.len() as f64;
+                    // Max distance the open-loop horizon can carry the plant from `r`.
+                    // Unbounded speed + a horizon => cannot bound the excursion => drop it.
+                    let margin = match self.limits.max_speed_mps {
+                        Some(v) if v > 0.0 && dt_s > 0.0 => v * n * dt_s,
+                        _ => f64::INFINITY,
+                    };
+                    if r.is_finite() && r > radius - margin {
+                        out.horizon.clear();
+                    }
+                }
+            }
+        }
         out
     }
 
@@ -428,6 +465,69 @@ mod tests {
         // The all-zero-seq escape hatch still refreshes (pull/sim streams).
         wd.on_command(1.5, 200.0, 0);
         assert!(!wd.should_hold(1.6), "seq=0 stream still refreshes");
+    }
+
+    #[test]
+    fn note_link_burst_latches_estop() {
+        let mut gov = SafetyGovernor::new(SafetyLimits::default());
+        assert!(!gov.is_estopped());
+        gov.note_link(false); // no jam -> no change
+        assert!(!gov.is_estopped());
+        gov.note_link(true); // jam burst -> latch
+        assert!(gov.is_estopped(), "a link burst must latch ESTOP");
+        gov.note_link(false); // a later clear link must NOT un-latch
+        assert!(gov.is_estopped(), "ESTOP latch must persist until reset");
+        gov.reset();
+        assert!(!gov.is_estopped());
+    }
+
+    #[test]
+    fn geofence_horizon_lookahead_truncates_near_fence() {
+        // radius 10 m, max_speed 5 m/s, horizon 4 steps @ 100 ms => margin 5*4*0.1 = 2 m.
+        let mut gov = SafetyGovernor::new(SafetyLimits {
+            geofence_radius_m: Some(10.0),
+            max_speed_mps: Some(5.0),
+            command_timeout_ms: 500.0,
+            ..Default::default()
+        });
+        let cmd = CommandFrame {
+            mode: Mode::Active,
+            channels: channels_with("velocity_setpoint", 1.0, "m/s"),
+            horizon: vec![
+                channels_with("velocity_setpoint", 1.0, "m/s"),
+                channels_with("velocity_setpoint", 1.0, "m/s"),
+                channels_with("velocity_setpoint", 1.0, "m/s"),
+                channels_with("velocity_setpoint", 1.0, "m/s"),
+            ],
+            horizon_dt_ms: Some(100.0),
+            ..Default::default()
+        };
+        // r=9: inside the fence but within the 2 m horizon margin (9 > 10-2).
+        let near = SensorFrame {
+            channels: channels_with("pose_position", 9.0, "m"),
+            ..Default::default()
+        };
+        let out = gov.govern(&cmd, Some(&near), 1.0, Some(1.0));
+        assert_eq!(
+            out.mode,
+            Mode::Active,
+            "tick-0 inside the fence still actuates"
+        );
+        assert!(
+            out.horizon.is_empty(),
+            "near the fence the open-loop horizon must be truncated"
+        );
+        // r=3: well inside (3 < 10-2) -> horizon preserved.
+        let inside = SensorFrame {
+            channels: channels_with("pose_position", 3.0, "m"),
+            ..Default::default()
+        };
+        let out2 = gov.govern(&cmd, Some(&inside), 2.0, Some(2.0));
+        assert_eq!(
+            out2.horizon.len(),
+            4,
+            "well inside the fence the horizon is kept"
+        );
     }
 
     fn channels_with(name: &str, x: f64, unit: &str) -> crate::messages::Map<ChannelValue> {

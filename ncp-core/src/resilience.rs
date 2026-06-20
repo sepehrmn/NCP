@@ -116,6 +116,10 @@ pub fn max_horizon_len(ttl_ms: f64, horizon_dt_ms: f64) -> usize {
 pub struct LinkMonitor {
     session_id: String,
     expected: Option<i64>,
+    /// First seq ever observed — the lower bound of the span over which loss is
+    /// measured, so `loss_rate` is a fraction of the seqs that SHOULD have arrived,
+    /// not of `received` (which a duplicate/replay flood inflates).
+    first_seq: Option<i64>,
     last_seq: i64,
     received: i64,
     lost: i64,
@@ -151,6 +155,7 @@ impl LinkMonitor {
         Self {
             session_id: session_id.into(),
             expected: None,
+            first_seq: None,
             last_seq: -1,
             received: 0,
             lost: 0,
@@ -185,6 +190,14 @@ impl LinkMonitor {
         // Bound on the reconciliation set so a hostile/huge gap cannot grow it
         // without limit; `lost` stays exact regardless (see saturating_add).
         const MISSING_CAP: usize = 4096;
+        if self.first_seq.is_none() {
+            self.first_seq = Some(seq);
+        }
+        // A pure duplicate (already-accounted seq, not filling a known gap) must be a
+        // metrics no-op: counting it as a fresh delivery would inflate `received` AND,
+        // via observe(false), suppress the CUSUM burst — so a replay/jam flood of old
+        // seqs could mask both loss_rate and the HOLD->ESTOP fail-safe.
+        let mut new_delivery = true;
         if let Some(e) = self.expected {
             if seq > e {
                 // Missed e..=seq-1. `missed` is positive (guarded by `seq > e`).
@@ -207,15 +220,20 @@ impl LinkMonitor {
                 // Out-of-order / duplicate. If this seq was previously counted as
                 // lost, it actually arrived late: reconcile by decrementing `lost`
                 // and forgetting it, so mere reordering does not permanently
-                // inflate loss_rate (and spuriously escalate the fail-safe). A
-                // true duplicate (already reconciled / never missing) is a no-op.
+                // inflate loss_rate (and spuriously escalate the fail-safe).
                 if self.missing.remove(&seq) {
                     self.lost = (self.lost - 1).max(0);
+                } else {
+                    // A true duplicate (already reconciled / never missing) is a
+                    // metrics no-op — it must not lower the loss CUSUM.
+                    new_delivery = false;
                 }
             }
         }
-        self.received = self.received.saturating_add(1);
-        self.observe(false);
+        if new_delivery {
+            self.received = self.received.saturating_add(1);
+            self.observe(false);
+        }
         self.last_seq = seq;
         // Advance the next-expected seq FORWARD only: an out-of-order (late)
         // arrival must not rewind `expected` (that would re-open the gap it just
@@ -227,11 +245,15 @@ impl LinkMonitor {
     }
 
     pub fn loss_rate(&self) -> f64 {
-        let total = self.received.saturating_add(self.lost);
-        if total == 0 {
-            0.0
-        } else {
-            self.lost as f64 / total as f64
+        // Span-based: lost as a fraction of the seqs that SHOULD have arrived over
+        // [first_seq, expected-1], NOT of `received` (which duplicates inflate). This
+        // makes the rate immune to a duplicate/replay flood masking real loss.
+        match (self.first_seq, self.expected) {
+            (Some(first), Some(exp)) => {
+                let span = (exp - first).max(1); // `exp` is the forward next-expected high-water
+                (self.lost as f64 / span as f64).clamp(0.0, 1.0)
+            }
+            _ => 0.0,
         }
     }
 
@@ -463,6 +485,45 @@ mod tests {
         assert!(
             buf.should_hold(1.3),
             "the duplicate seq=10 replay at t=5 must not refresh the t=1 deadline"
+        );
+    }
+
+    #[test]
+    fn loss_rate_immune_to_duplicate_flood() {
+        // High CUSUM threshold to isolate the loss_rate metric from the burst flag.
+        let mut m = LinkMonitor::new("uav1", 0.05, 1000.0);
+        // 0,1,2 then jump to 6 (lose 3,4,5): 3 lost over span [0,6] = 7 -> ~0.43.
+        for s in [0, 1, 2, 6] {
+            m.on_seq(s);
+        }
+        let base = m.loss_rate();
+        assert!(base > 0.3, "real loss must register, got {base}");
+        // A flood of 50 duplicates of an old seq must NOT lower the reported loss
+        // (the span-based denominator + duplicate no-op make it replay-immune).
+        for _ in 0..50 {
+            m.on_seq(0);
+        }
+        assert!(
+            (m.loss_rate() - base).abs() < 1e-9,
+            "duplicate flood changed loss_rate ({} vs {base})",
+            m.loss_rate()
+        );
+    }
+
+    #[test]
+    fn duplicate_flood_does_not_suppress_burst() {
+        let mut m = LinkMonitor::new("uav1", 0.05, 3.0);
+        m.on_seq(0);
+        m.on_seq(20); // big gap -> CUSUM trips
+        assert!(m.is_burst(), "a large gap must trip the jam burst");
+        // Flooding duplicates of an old seq must NOT clear the latched burst (each
+        // duplicate is a metrics no-op, so it cannot lower the loss CUSUM).
+        for _ in 0..100 {
+            m.on_seq(0);
+        }
+        assert!(
+            m.is_burst(),
+            "duplicate flood must not suppress the jam burst"
         );
     }
 
