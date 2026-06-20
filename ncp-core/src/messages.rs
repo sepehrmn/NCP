@@ -891,7 +891,7 @@ pub fn check_version(version: &str, strict: bool) -> Result<bool, NcpVersionErro
 /// class) is *detectable* rather than silently coerced. It is recomputed from the
 /// actual proto by the `contract_hash_matches_proto` test, so a proto edit that
 /// forgets to bump this constant fails CI.
-pub const CONTRACT_HASH: &str = "c35c4897a317049f";
+pub const CONTRACT_HASH: &str = "4c31db5c8eafbcf7";
 
 /// FNV-1a (64-bit) hex digest of `bytes`. Dependency-free (no sha/digest crate),
 /// adequate for the contract-pinning integrity-vs-accidental-drift use. It is
@@ -1098,6 +1098,51 @@ mod tests {
             fnv1a_hex(&proto),
             CONTRACT_HASH,
             "proto changed without bumping CONTRACT_HASH (or vice versa)"
+        );
+    }
+
+    #[test]
+    fn required_fields_match_the_schemas() {
+        // Drift guard: required_fields() (the validator's source of truth) MUST
+        // equal each JSON Schema's `required` array, so the Rust validator and the
+        // schema corpus cannot silently disagree about what a wire message must
+        // carry. Also asserts every schema `kind` has a required_fields() entry.
+        use std::collections::BTreeSet;
+        let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/../schemas");
+        let mut checked = 0;
+        for entry in std::fs::read_dir(dir).expect("schemas/ readable from the workspace") {
+            let path = entry.unwrap().path();
+            if !path.to_string_lossy().ends_with(".schema.json") {
+                continue;
+            }
+            let schema: serde_json::Value =
+                serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+            let Some(kind) = schema["properties"]["kind"]["const"].as_str() else {
+                continue;
+            };
+            let schema_required: BTreeSet<String> = schema
+                .get("required")
+                .and_then(|r| r.as_array())
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|v| v.as_str().map(String::from))
+                        .collect()
+                })
+                .unwrap_or_default();
+            let rf = required_fields(kind)
+                .unwrap_or_else(|| panic!("schema kind {kind:?} has no required_fields() entry"));
+            let rf_set: BTreeSet<String> = rf.iter().map(|s| (*s).to_string()).collect();
+            assert_eq!(
+                rf_set,
+                schema_required,
+                "required_fields({kind:?}) disagrees with {}'s `required`",
+                path.file_name().unwrap().to_string_lossy()
+            );
+            checked += 1;
+        }
+        assert_eq!(
+            checked, 13,
+            "expected all 13 schema kinds, checked {checked}"
         );
     }
 

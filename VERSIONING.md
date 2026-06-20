@@ -29,8 +29,9 @@ breaking** — the version guard fails closed on any `0.x` minor difference
 (`check_version`). Pin an exact version (`tag = "v0.2.0"`) for anything you build
 against. `0.x` is explicitly unstable.
 
-The current wire is **`0.2`** (`ncp_version = "0.2"`); receivers check the
-**major** of `ncp_version` for compatibility (see §version negotiation). `0.2`
+The current wire is **`0.2`** (`ncp_version = "0.2"`); receivers check the full
+`ncp_version` and pre-1.0 require an exact `(major, minor)` match — any `0.x`
+minor difference is fail-closed (see §version negotiation). `0.2`
 added the neuron-family wire (#10) and the bulk column codec (#6) over `0.1` —
 both additive, but a pre-1.0 minor bump, so a `0.1` peer is fail-closed rejected.
 

@@ -59,9 +59,11 @@ document is the human-readable spec.
 ## 1. Versioning & compatibility
 
 Every message carries `ncp_version` (semver). Consumers **ignore unknown fields**
-(forward compatible within a major version). A receiver checks the **major**
-version only; a major mismatch is rejected. NCP is **0.2** — pre-1.0, the wire
-shape may still change; pin the version you build against.
+(additive forward-compatibility within a compatible wire version). Pre-1.0 the
+**minor is breaking**: a receiver checks the full version and an exact
+`(major, minor)` match is required — any `0.x` minor difference is fail-closed
+rejected, never coerced. NCP is **0.2** — pre-1.0, the wire shape may still
+change; pin the exact version you build against.
 
 ## 2. Entity model (perception, action, neither; 0..N of each)
 

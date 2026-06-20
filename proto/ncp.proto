@@ -24,7 +24,9 @@
 //
 // Wire conventions:
 //   - every message carries a `kind` string discriminator and an `ncp_version`
-//     string ("0.2"); receivers check the *major* of `ncp_version` only,
+//     string ("0.2"); receivers check the FULL `ncp_version` — pre-1.0 the minor
+//     is breaking, so an exact (major, minor) match is required and any 0.x minor
+//     difference is fail-closed rejected (never coerced),
 //   - integer fields (ids, sizes, seq, seed) are int64, matching the Rust `i64`
 //     types and the JSON `"integer"` schema type; the JSON projection emits them
 //     as JSON numbers (a deliberate, human-readable deviation from ProtoJSON,
@@ -34,8 +36,8 @@
 //     int64-as-strings migration is tracked in sepehrmn/NCP#5,
 //   - `record`/`stimulus` on OpenSession are NESTED specs (RecordSpec /
 //     StimulusSpec), each wrapping a repeated list of targets,
-//   - unknown fields are ignored on deserialize (forward compatible within a
-//     major version).
+//   - unknown fields are ignored on deserialize (additive forward-compatibility
+//     within a compatible wire version; pre-1.0 that is an exact major.minor).
 //
 // NCP is transport-agnostic. The recommended *decoupled* default is **Zenoh**
 // (these messages as payloads over a data-centric pub/sub + queryable bus — no
