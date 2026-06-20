@@ -360,6 +360,16 @@ impl ZenohBus {
     }
 
     /// Subscribe to `key` (may contain `*`/`**`); `callback` gets `(key, bytes)`.
+    ///
+    /// Backpressure model: this is a Zenoh **callback** subscriber — the callback
+    /// runs INLINE on Zenoh's receive task, one sample at a time. There is no
+    /// user-side queue, so a slow callback applies natural backpressure to the
+    /// stream (it does NOT buffer unboundedly and cannot exhaust memory). The flip
+    /// side is head-of-line: keep `callback` cheap (decode + hand off), and for a
+    /// control loop prefer latest-wins (overwrite a shared `SensorFrame`, as
+    /// [`ZenohControlTransport`] does) over doing heavy work here. A panic in
+    /// `callback` unwinds Zenoh's task, so the callback must not panic on
+    /// adversarial input — decode fallibly and drop, never `unwrap`.
     pub async fn subscribe<F>(&self, key: &str, callback: F) -> Result<()>
     where
         F: Fn(String, Vec<u8>) + Send + Sync + 'static,
