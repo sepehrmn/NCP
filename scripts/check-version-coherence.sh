@@ -115,15 +115,35 @@ cff_version() {
   ' "$f"
 }
 
+# README.md citation block: a `version = {x.y.z}` line inside the bibtex example.
+# This is documentation a user copies verbatim, so a stale value here misleads
+# every downstream citation — exactly the drift this guard exists to catch.
+readme_bibtex_version() {
+  local f="$REPO_ROOT/README.md"
+  [[ -f "$f" ]] || return
+  awk '
+    /^[[:space:]]*version[[:space:]]*=[[:space:]]*\{/ {
+      line=$0
+      sub(/^[^{]*\{/, "", line)   # drop up to the opening brace
+      sub(/\}.*$/, "", line)      # drop the closing brace and trailing
+      gsub(/[[:space:]]/, "", line)
+      print line
+      exit
+    }
+  ' "$f"
+}
+
 CARGO_VER="$(cargo_version || true)"
 NPM_VER="$(npm_version || true)"
 CFF_VER="$(cff_version || true)"
+README_VER="$(readme_bibtex_version || true)"
 
 echo "Version coherence (repo: $REPO_ROOT)"
 echo
 printf '  %-22s %s\n' "Cargo (workspace/pkg)" "${CARGO_VER:-<not present>}"
 printf '  %-22s %s\n' "npm (package.json)"     "${NPM_VER:-<not present>}"
 printf '  %-22s %s\n' "CITATION.cff"           "${CFF_VER:-<not present>}"
+printf '  %-22s %s\n' "README bibtex"          "${README_VER:-<not present>}"
 echo
 
 problems=()
@@ -135,6 +155,7 @@ present_values=()
 [[ -n "$CARGO_VER" ]] && { present_labels+=("Cargo"); present_values+=("$CARGO_VER"); }
 [[ -n "$NPM_VER"   ]] && { present_labels+=("npm");   present_values+=("$NPM_VER"); }
 [[ -n "$CFF_VER"   ]] && { present_labels+=("CITATION.cff"); present_values+=("$CFF_VER"); }
+[[ -n "$README_VER" ]] && { present_labels+=("README bibtex"); present_values+=("$README_VER"); }
 
 if [[ "${#present_values[@]}" -eq 0 ]]; then
   echo "ERROR: no version source found (no Cargo.toml / package.json / CITATION.cff version)" >&2

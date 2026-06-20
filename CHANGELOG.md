@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- `README.md` bibtex citation example pinned a stale `version = {0.2.7}`; corrected to
+  `0.2.8` to match `CITATION.cff` and the crate/package version.
+
+### Changed
+
+- `scripts/check-version-coherence.sh` now also extracts and verifies the `README.md`
+  bibtex `version = {…}` against the Cargo/npm/CITATION versions, so a stale citation
+  example fails the guard (this was the exact drift that left the bibtex at `0.2.7`).
+
 ## [0.2.8] - 2026-06-20
 
 ### Security
