@@ -19,7 +19,10 @@ case**, not the only case.
 - **Action plane** (`CommandFrame`, controller→plant; express + DROP + RealTime):
   *safety-critical, low-rate* — a command is useful only if it arrives within its
   deadline; a late frame is a dropped frame, and a *burst* of drops over a fast
-  unstable mode lets the state escape.
+  unstable mode lets the state escape. **Normative:** because this plane may drop a
+  frame, a conformant plant **MUST** fail safe (HOLD) once the latest command's
+  `ttl_ms` expires and **MUST NOT** actuate on a stale setpoint — see the
+  action-plane liveness conformance clause in `NEURO_CYBERNETIC_PROTOCOL.md`.
 - **Control-RPC plane** (lifecycle; Reliable/Block): rare, not real-time — ARQ is
   correct, no change.
 

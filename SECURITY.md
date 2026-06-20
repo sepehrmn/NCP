@@ -34,6 +34,25 @@ authorization, modelled on the established robotics-control-bus mechanisms:
   for an open realm), and consider per-message signing (cf. **MAVLink 2 message
   signing**) so a replayed or forged command is rejectable.
 
+**The perception (sensor) plane is an equal attack surface.** Because the
+controller computes commands *from* `SensorFrame`s, a participant that can PUBLISH
+spoofed sensor data steers the actuator and can defeat the geofence — a
+**false-data-injection (FDI)** attack — without ever touching `…/command`. There is
+no local-governor equivalent here: sensor-side FDI can be made *perfectly
+undetectable* to model-/residual-based monitors (the brain perceives "normal"
+operation while the body is driven off trajectory — see Ueda & Kwon,
+[arXiv:2408.10177](https://arxiv.org/abs/2408.10177), and Choi & Jang, WISA 2022,
+[doi:10.1007/978-3-031-25659-2_14](https://doi.org/10.1007/978-3-031-25659-2_14)),
+so a software safety governor is **not** a substitute. The remedy is the same as
+for the command plane — **publisher access control**: under DDS-Security / ROS 2
+SROS2, *publish* permission is access-controlled per topic independently of
+subscribe, on default-deny governance (cf. the **DDS-Security** access-control model
+and the SROS2 master governance that enables write access control on every topic).
+NCP's ACL template therefore restricts `…/sensor/**` PUT to the `robot` (body)
+subject, symmetric to `…/command/**` being restricted to `engram`; both
+PUT-authority invariants are mechanically enforced by
+[`scripts/check_acl_template.py`](scripts/check_acl_template.py).
+
 This is tracked as ROADMAP **P0** (authenticate the action plane) and
 [#7](https://github.com/sepehrmn/NCP/issues/7). A per-plane Zenoh ACL template
 (default-deny; only the authenticated `engram` subject may publish commands, the
@@ -63,9 +82,11 @@ meaningless. To stand up an authenticated realm:
    into the router/session config (`zenohd --config …` or the embedded
    `with_config` block). `default_permission: "deny"` rejects anything not
    explicitly allowed.
-4. **Verify the invariant.** With the realm up, confirm an `observer`/`robot`
-   identity is *rejected* when it `put`s on `…/session/*/command/**`, and that
-   `engram` succeeds — the action plane is then authenticated, not world-writable.
+4. **Verify both PUT invariants.** With the realm up, confirm an `observer`/`robot`
+   identity is *rejected* when it `put`s on `…/session/*/command/**` (only `engram`
+   succeeds), AND that an `observer`/`engram` identity is *rejected* when it `put`s
+   on `…/session/*/sensor/**` (only `robot` succeeds) — both control planes (action
+   and perception) are then authenticated, not world-writable.
 
 Schema field names follow the Zenoh 1.x access-control config; validate against
 your Zenoh version (authoritative: the zenoh.io configuration docs) before relying

@@ -1108,6 +1108,8 @@ mod tests {
         let active: CommandFrame =
             serde_json::from_str(r#"{"kind":"command_frame","mode":"active"}"#).unwrap();
         assert_eq!(active.mode, Mode::Active);
-        assert!(serde_json::to_string(&active).unwrap().contains("\"active\""));
+        assert!(serde_json::to_string(&active)
+            .unwrap()
+            .contains("\"active\""));
     }
 }

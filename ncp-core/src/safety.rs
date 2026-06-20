@@ -415,7 +415,7 @@ mod tests {
     fn duplicate_command_does_not_extend_ttl() {
         let mut wd = CommandWatchdog::new();
         wd.on_command(1.0, 200.0, 5); // accepted; ttl 200 ms
-        // Stale/duplicate commands (seq <= 5) must NOT refresh the deadline.
+                                      // Stale/duplicate commands (seq <= 5) must NOT refresh the deadline.
         wd.on_command(1.15, 200.0, 5); // duplicate
         wd.on_command(1.15, 200.0, 3); // older
         assert!(

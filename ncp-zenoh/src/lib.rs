@@ -528,13 +528,9 @@ mod tests {
             check_reply_kind(br#"{"kind":"session_opened","ok":true}"#, "session_opened").is_ok()
         );
         // Wrong-but-valid-JSON kind -> Err (not a silent all-default decode).
-        assert!(
-            check_reply_kind(br#"{"kind":"observation_frame"}"#, "session_opened").is_err()
-        );
+        assert!(check_reply_kind(br#"{"kind":"observation_frame"}"#, "session_opened").is_err());
         // An error frame -> Err.
-        assert!(
-            check_reply_kind(br#"{"kind":"error","error":"boom"}"#, "session_opened").is_err()
-        );
+        assert!(check_reply_kind(br#"{"kind":"error","error":"boom"}"#, "session_opened").is_err());
     }
 
     #[test]

@@ -262,6 +262,22 @@ not on the wire); the genuinely NCP-specific part is only the `mode`
 enum as an explicit wire authority. Mapping to these names keeps NCP interoperable
 with a ROS 2/DDS stack rather than diverging from it.
 
+**Conformance — action-plane liveness (normative).** Because the action plane is
+best-effort and **MAY** silently drop a `CommandFrame`, a conformant plant **MUST**
+enforce command liveness locally: once the most-recent command's `ttl_ms` has
+elapsed (measured on the plant's own clock), it **MUST** fail safe — HOLD to a safe
+setpoint (zeroed / `Mode.HOLD`) — and **MUST NOT** continue actuating on the stale
+setpoint or replay a horizon past its `ttl_ms`. The wire layer only *detects* a
+gap (as DDS `DEADLINE` notifies but does not act); the plant owns the safe state —
+the required "safe state" / de-energize-to-safe principle of functional-safety
+practice (IEC 61508 / ISO 13849). A stale, duplicate, or out-of-order command
+**MUST NOT** refresh the liveness deadline. NCP's reference plant-side primitives
+are `CommandWatchdog` and `ActionBuffer` (see [`RESILIENCE.md`](RESILIENCE.md)). The
+key words **MUST**, **MUST NOT**, and **MAY** are used as defined in
+[RFC 2119](https://www.rfc-editor.org/rfc/rfc2119.html) and
+[RFC 8174](https://www.rfc-editor.org/rfc/rfc8174.html) (only the uppercase forms
+carry the normative meaning).
+
 **Engram's gateway (`ncp-gateway`).** Engram's brain is NEST (Python), so its NCP
 *server* stays Python. The gateway gives Engram a production-grade Rust Zenoh edge
 — it runs the `{realm}/rpc` queryable and the pub/sub planes and forwards each RPC
