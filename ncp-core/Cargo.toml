@@ -9,6 +9,12 @@ repository.workspace = true
 rust-version.workspace = true
 keywords = ["spiking-neural-network", "neurorobotics", "protocol", "nest-simulator", "robotics"]
 categories = ["science::robotics", "simulation", "api-bindings"]
+readme = "README.md"
+documentation = "https://docs.rs/ncp-core"
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
 
 [dependencies]
 serde = { workspace = true }

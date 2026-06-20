@@ -9,7 +9,7 @@ Conduct. The full text is published at:
 and give and receive feedback gracefully.
 
 **Reporting:** to raise a conduct concern, contact the maintainer (**@sepahead**)
-privately (a direct message, or email via the address in the GitHub profile).
+privately (a direct message, or email **sepmhn@gmail.com**).
 Reports are handled promptly and confidentially. *(Security vulnerabilities go
 through a different channel — a GitHub security advisory — per [`SECURITY.md`](SECURITY.md).)*
 

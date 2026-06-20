@@ -6,6 +6,12 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
+readme = "README.md"
+documentation = "https://docs.rs/ncp-gateway"
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
 
 [[bin]]
 name = "ncp-gateway"

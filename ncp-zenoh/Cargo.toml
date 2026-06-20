@@ -9,6 +9,12 @@ repository.workspace = true
 rust-version.workspace = true
 keywords = ["zenoh", "neurorobotics", "protocol", "transport", "robotics"]
 categories = ["network-programming", "science::robotics", "simulation"]
+readme = "README.md"
+documentation = "https://docs.rs/ncp-zenoh"
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
 
 [dependencies]
 ncp-core = { workspace = true }

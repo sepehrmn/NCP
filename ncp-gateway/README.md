@@ -24,7 +24,7 @@ and C/C++. `ncp-gateway` is the Rust deployment edge in front of a Python comman
 
 ## Run
 
-```bash
+```text
 cargo run -p ncp-gateway
 ```
 

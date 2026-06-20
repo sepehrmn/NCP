@@ -13,3 +13,21 @@ __pycache__/
 
 # Internal review scratch (not a shipped artifact)
 REVIEW_AND_PLAN.md
+
+# OS noise
+.DS_Store
+
+# Editor / IDE local-history
+.idea/
+.vscode/
+*.iml
+*.swp
+
+# Agent-tool working directories (scratch; commit shared config, ignore local)
+.claude/settings.local.json
+.playwright-mcp/
+
+# Caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/

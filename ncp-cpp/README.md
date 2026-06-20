@@ -18,7 +18,7 @@ The C header is [`include/ncp.h`](include/ncp.h); a worked example is
 [`examples/demo.cpp`](examples/demo.cpp). Link against `ncp_cpp` (staticlib or
 cdylib):
 
-```bash
+```text
 cargo build -p ncp-cpp        # produces libncp_cpp.a / libncp_cpp.{so,dylib}
 ```
 

@@ -1,40 +1,5 @@
-//! # ncp-core — Neuro-Cybernetic Protocol (NCP), Rust reference
-//!
-//! NCP is a versioned, transport-agnostic, project-agnostic standard for letting
-//! an Engram-driven NEST simulation serve external robot / UAV / simulation
-//! systems — for **perception, action, both, or neither**. This crate is the
-//! normative Rust core: the wire types, the version guard, the key scheme, a
-//! reference rate codec, the action-plane safety governor, and an in-process bus
-//! and control loop. The Zenoh transport is in `ncp-zenoh`.
-//!
-//! Scientific boundary (binding): returned `V_m`/spikes are **raw simulation
-//! outputs of a specified model**, never a validated reproduction. Every
-//! [`ObservationFrame`] carries `calibrated_posterior=false` and
-//! `is_simulation_output=true`. A neuro-controller is a control artifact, never a
-//! paper-reproduction claim.
-//!
-//! The wire types serialize to semantically-equivalent JSON to what the Python
-//! reference and the protobuf IDL produce (map key order may differ between
-//! encoders), so Rust, Python and TypeScript peers interoperate.
-//!
-//! ```
-//! use ncp_core::{OpenSession, NetworkRef, NetworkRefKind, RecordSpec, RecordTarget, Observable};
-//! let open = OpenSession {
-//!     session_id: "uav3-percept".into(),
-//!     network: NetworkRef {
-//!         kind: NetworkRefKind::Builtin,
-//!         ref_: "iaf_psc_alpha".into(),
-//!         population_sizes: [("feat".to_string(), 1)].into_iter().collect(),
-//!         ..Default::default()
-//!     },
-//!     record: RecordSpec { targets: vec![RecordTarget {
-//!         port: "spk".into(), target: "feat".into(), observable: Observable::Spikes, ..Default::default()
-//!     }] },
-//!     ..Default::default()
-//! };
-//! let json = serde_json::to_string(&open).unwrap();
-//! assert!(json.contains("\"kind\":\"open_session\""));
-//! ```
+#![doc = include_str!("../README.md")]
+#![cfg_attr(docsrs, feature(doc_cfg))]
 
 pub mod bulk;
 pub mod bus;

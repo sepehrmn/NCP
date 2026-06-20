@@ -1,12 +1,12 @@
-//! # ncp-zenoh — the recommended decoupled NCP transport
+#![doc = include_str!("../README.md")]
+#![cfg_attr(docsrs, feature(doc_cfg))]
 //!
-//! Carries NCP over a **data-centric** Zenoh bus: RPC is a *queryable* on
-//! `{realm}/rpc`; the perception, action and observation **data planes** are
-//! *pub/sub* on per-session keys (see [`ncp_core::keys`]). Peers address data,
-//! not server addresses — location-transparent, many-to-many, and the medium
-//! a ROS 2 robot client already speaks. Observers (e.g. an analysis/observer
-//! client) attach to the data-plane keys read-only with zero changes to the
-//! control path.
+//! # Transport details
+//!
+//! The perception, action and observation **data planes** are *pub/sub* on
+//! per-session keys (see [`ncp_core::keys`]). Observers (e.g. an
+//! analysis/observer client) attach to the data-plane keys read-only with zero
+//! changes to the control path.
 //!
 //! Each plane gets the QoS its job needs (see [`Plane`]). NCP sets
 //! CongestionControl + priority + express per plane; wire reliability is left at

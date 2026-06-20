@@ -11,6 +11,7 @@ type: software
 authors:
   - family-names: Mahmoudian
     given-names: Sepehr
+    email: sepmhn@gmail.com
 repository-code: 'https://github.com/sepahead/NCP'
 url: 'https://github.com/sepahead/NCP'
 abstract: >-

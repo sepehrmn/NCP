@@ -110,6 +110,23 @@ If your change touches the wire and you have not done all four, it is incomplete
 When in doubt about whether something is wire-visible, assume it is and ask in
 the PR.
 
+## Releases and tags (no moved tags)
+
+Release tags are **immutable**. Once a `vX.Y.Z` tag is pushed, never delete,
+re-point, or force-update it — downstream consumers (`crebain`, `pid_vla`, the
+`Paper2Brain` vendored mirror) and `@sepehrmn/ncp` pin NCP by tag, and a moved
+tag silently changes the bytes those pins resolve to. If a release is wrong, cut
+a **new** tag (bump the version); do not rewrite history under an existing one.
+
+A release tag must be coherent: the Cargo workspace version, `package.json`
+version, and `CITATION.cff` version must all equal the tag's version, and the
+annotated tag must peel to the exact commit it was cut from. The read-only
+`scripts/check-version-coherence.sh` guard asserts this (run it with the tag
+name, e.g. `scripts/check-version-coherence.sh v0.2.8`); the **version
+coherence** CI job runs it on every PR and on tag pushes. Before bumping
+downstream pins, run `scripts/check-consumer-pins.sh` from a full local tree to
+confirm every consumer agrees on the target tag.
+
 ## Project-agnostic rule
 
 The SDK must stay **project- and vendor-neutral**. Do not introduce

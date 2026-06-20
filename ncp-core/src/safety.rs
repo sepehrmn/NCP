@@ -5,7 +5,8 @@
 //! the plant / flight controller enforces it. Mirrors `loop.py::SafetyGovernor`.
 //!
 //! ESTOP **latches**: once any condition trips it, every subsequent `govern`
-//! returns ESTOP + a zeroed command until a supervisor calls [`reset`]. HOLD (on a
+//! returns ESTOP + a zeroed command until a supervisor calls
+//! [`reset`](SafetyGovernor::reset). HOLD (on a
 //! stale/frozen sensor) is **non-latching** — it clears as soon as fresh data
 //! flows again.
 //!
@@ -27,12 +28,12 @@ pub struct SafetyGovernor {
     /// with the inbound command's channels, never just one literal name.
     command_channels: Vec<String>,
     /// Latched emergency-stop. Set by any ESTOP-tripping condition; cleared only
-    /// by [`reset`]. While set, every `govern` returns a zeroed ESTOP frame.
+    /// by [`reset`](SafetyGovernor::reset). While set, every `govern` returns a zeroed ESTOP frame.
     estop: bool,
     /// Latched config-level fail-closed: a limit (geofence/speed) was set whose
     /// channel is absent from the negotiated specs. Per FIX 3 the governor then
     /// HOLDs and reports `safety_ok=false`. A misconfiguration cannot be fixed at
-    /// runtime, so it does not clear on [`reset`].
+    /// runtime, so it does not clear on [`reset`](SafetyGovernor::reset).
     config_fail_closed: bool,
 }
 
@@ -51,7 +52,7 @@ impl Default for SafetyGovernor {
 
 impl SafetyGovernor {
     /// Construct with default channel wiring (`pose_position` / `velocity_setpoint`).
-    /// Prefer [`from_capabilities`] so the enforced channels track the negotiated
+    /// Prefer [`from_capabilities`](SafetyGovernor::from_capabilities) so the enforced channels track the negotiated
     /// handshake.
     pub fn new(limits: SafetyLimits) -> Self {
         Self {
@@ -166,7 +167,7 @@ impl SafetyGovernor {
     /// Latch ESTOP when the link monitor reports a sustained loss burst (a jam) —
     /// the documented Layer-3 fail-safe escalation. A collapsed link is NOT a
     /// transient HOLD; it de-energizes to a latched safe state until a supervisor
-    /// [`reset`]s (an operator-supplied loss-rate threshold may gate this too, but
+    /// [`reset`](SafetyGovernor::reset)s (an operator-supplied loss-rate threshold may gate this too, but
     /// the CUSUM `burst` is the trip today). Without this, a jammed craft sits in
     /// self-clearing HOLD forever while the link is dead.
     pub fn note_link(&mut self, burst: bool) {
@@ -232,7 +233,7 @@ impl SafetyGovernor {
     /// Apply safety to `command`. `now_s` and `last_sensor_s` are wall-clock
     /// seconds; a missing/old sensor forces HOLD (fail-safe to zero, **not**
     /// latch-last). ESTOP **latches**: once tripped, every later call returns a
-    /// zeroed ESTOP until [`reset`]. Takes `&mut self` because of that latch.
+    /// zeroed ESTOP until [`reset`](SafetyGovernor::reset). Takes `&mut self` because of that latch.
     pub fn govern(
         &mut self,
         command: &CommandFrame,

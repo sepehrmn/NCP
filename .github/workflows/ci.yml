@@ -121,6 +121,37 @@ jobs:
       - name: dist must match the committed build
         run: git diff --exit-code -- ncp-ts/dist
 
+  version-coherence:
+    name: version coherence
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      # Read-only guard: the Cargo workspace version, package.json version, and
+      # CITATION.cff version must all agree. Catches a release that bumps one
+      # metadata file but forgets another (the "stale metadata / moved tag"
+      # footgun). On a tag push it also asserts the tag peels to the commit it
+      # claims and that the tag's version matches the in-tree version.
+      - name: Internal version coherence (HEAD)
+        run: scripts/check-version-coherence.sh
+      - name: Version coherence (tag)
+        if: startsWith(github.ref, 'refs/tags/')
+        run: scripts/check-version-coherence.sh "${GITHUB_REF_NAME}"
+      # check-consumer-pins.sh verifies the downstream consumer repos (crebain,
+      # pid_vla, Paper2Brain) pin a single agreed NCP tag. Those siblings are not
+      # checked out in CI, so run it only if at least one is present; otherwise
+      # inform and skip (it is a release-time guard run from a full local tree).
+      - name: Consumer pin coherence (sibling repos, if present)
+        run: |
+          base="$(cd .. && pwd)"
+          if [ -d "$base/crebain" ] || [ -d "$base/pid_vla" ] || [ -d "$base/Paper2Brain" ]; then
+            echo "Sibling consumer repos detected under $base — checking pins."
+            scripts/check-consumer-pins.sh "" "$base"
+          else
+            echo "No sibling consumer repos under $base in this CI checkout — skipping consumer-pin check."
+            echo "Run scripts/check-consumer-pins.sh locally from a full tree before a tag bump."
+          fi
+
   cargo-deny:
     name: cargo-deny (advisories, licenses, bans, sources)
     runs-on: ubuntu-latest

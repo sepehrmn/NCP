@@ -1,0 +1,32 @@
+[build-system]
+requires = ["maturin>=1.7,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "ncp"
+description = "Python bindings for the NCP (Neuro-Cybernetic Protocol) Rust core: version guard, key scheme, rate codec, action-plane safety governor, and wire validation, wire-identical to the Rust and TypeScript peers"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT OR Apache-2.0" }
+authors = [{ name = "Sepehr Mahmoudian" }]
+keywords = ["neurorobotics", "protocol", "spiking-neural-network", "nest-simulator", "robotics"]
+classifiers = [
+    "Programming Language :: Rust",
+    "Programming Language :: Python :: 3",
+    "Topic :: Scientific/Engineering",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "License :: OSI Approved :: Apache Software License",
+]
+dynamic = ["version"]
+
+[project.urls]
+Repository = "https://github.com/sepahead/NCP"
+Homepage = "https://github.com/sepahead/NCP"
+
+[tool.maturin]
+# The Rust crate lives alongside this file; build the stable-ABI (abi3) extension module.
+manifest-path = "Cargo.toml"
+module-name = "ncp"
+features = ["pyo3/extension-module"]
+strip = true

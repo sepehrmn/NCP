@@ -1,0 +1,4 @@
+# Canonicalize all author identities to the single maintainer identity.
+# Format: Canonical Name <canonical-email> [Commit Name] <commit-email>
+Sepehr Mahmoudian <sepmhn@gmail.com> <Sepehr.Mahmoudian@gmail.com>
+Sepehr Mahmoudian <sepmhn@gmail.com> dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>

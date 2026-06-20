@@ -1,10 +1,7 @@
-//! # ncp-cpp — C ABI for the NCP Rust core
+#![doc = include_str!("../README.md")]
+#![cfg_attr(docsrs, feature(doc_cfg))]
 //!
-//! A stable `extern "C"` surface so **C and C++** projects use the canonical Rust
-//! implementation of NCP (version guard, key scheme, rate codec, action-plane
-//! safety governor, message validation) rather than reimplementing the wire — the
-//! same guarantee `ncp-python` gives Python. The C header is `include/ncp.h`; a
-//! worked example is `examples/demo.cpp`.
+//! # API notes
 //!
 //! String returns are heap-allocated UTF-8 C strings the caller must release with
 //! [`ncp_string_free`]; `NULL` signals malformed input or an internal error.

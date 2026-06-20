@@ -1,18 +1,6 @@
-//! # ncp-gateway — Engram's Rust NCP edge
+#![doc = include_str!("../README.md")]
 //!
-//! Engram's brain is NEST (Python), so its NCP *server* stays Python. This
-//! gateway gives Engram a production-grade **Rust Zenoh edge**: it runs the
-//! control-plane RPC queryable (`{realm}/rpc`) and the observation pub/sub, and
-//! bridges each RPC to the Python `SessionService` over a localhost socket —
-//! reusing the existing transport-neutral `handle_json` seam. The fleet-facing,
-//! latency-sensitive transport becomes Rust (SHM/QoS, many-to-many discovery,
-//! free observer taps); `nest.Run` stays in Python.
-//!
-//! ```text
-//!  Zenoh bus  ──(SHM/QoS)──►  ncp-gateway (this)  ──(TCP, newline-JSON)──►  bridge_server.py
-//!     ▲                          {realm}/rpc queryable                       SessionService.handle_json → nest.Run
-//!     └── robot/UAV bodies, analysis/observer clients, dashboards attach as peers / observers
-//! ```
+//! # Configuration and security
 //!
 //! Config via env:
 //!   NCP_REALM        key-expression realm           (default `engram/ncp`)

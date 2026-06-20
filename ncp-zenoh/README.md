@@ -20,7 +20,7 @@ Each plane gets the QoS its job needs (`Plane`): **perception** drops under cong
 
 ## Open a bus and run a typed client
 
-```rust
+```rust,ignore
 use ncp_zenoh::{ZenohBus, ZenohNcpClient};
 
 // open() uses the default Zenoh config + default realm; open_realm(keys) sets the realm.
