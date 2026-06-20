@@ -7,6 +7,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.4] - 2026-06-20
+
+Safety, validation, and security hardening — the remaining major findings from the
+10-lens protocol audit after v0.2.3. No wire change — `ncp_version` stays `"0.2"`;
+all changes are plant-side/behavioral fixes, fail-safe deserialization, receive-path
+validation, a sensor-plane ACL invariant, observability, and normative docs, so
+existing peers and conformance vectors are unaffected. Crates/package `0.2.4`.
+
+### Fixed
+- **Real-time: `ActionBuffer`/`CommandWatchdog` reject stale & reordered commands.**
+  A duplicate/reordered/replayed `CommandFrame` could overwrite a newer one and
+  rewind the replay clock, and a trickle of stale commands kept the watchdog
+  deadline "fresh" (fail-open during a blackout). Now: monotonic-forward `seq`
+  acceptance drops them (`seq == 0` escape hatch for pull/sim streams) and the
+  watchdog refreshes only on a strictly-advancing `seq`; an ESTOP still latches even
+  if stale.
+- **Safety: an unknown `mode` string deserializes to `HOLD`** rather than
+  hard-erroring the whole `CommandFrame` (complements the v0.2.3 absent-mode→HOLD).
+- **Resilience: bulk parallel columns must agree in length.** `observation_from_bulk`
+  rejects a block whose `times`/`values`/`senders` disagree — fail closed at the
+  untrusted-bytes boundary instead of silently pairing mismatched arrays.
+- **Interop/safety: wrong-`kind` RPC replies are rejected** before the typed decode,
+  so a misrouted but valid-JSON reply no longer becomes an all-default response.
+
+### Security
+- **Sensor-plane PUT is access-controlled, symmetric to the command plane.** The
+  perception plane is a control input — a spoofed `SensorFrame` steers the controller
+  and defeats the geofence (false-data injection) — so `check_acl_template.py` now
+  enforces sensor-PUT → `robot` (and self-tests every run), and `SECURITY.md`
+  documents the threat + remedy (publisher access control per DDS-Security / SROS2).
+
+### Added
+- `diagnose_version()` + a sensor-subscriber diagnostic so a dropped,
+  version-incompatible frame is observable rather than silently ignored.
+
+### Documentation
+- A **normative action-plane liveness conformance clause**: a plant **MUST** fail
+  safe (HOLD) on expired `ttl_ms` and **MUST NOT** actuate on a stale setpoint (the
+  wire only detects a gap; the plant owns the safe state — RFC 2119/8174;
+  IEC 61508 / ISO 13849 framing).
+
 ## [0.2.3] - 2026-06-20
 
 Contract-vs-implementation reconciliations from a 10-lens protocol soundness audit.
@@ -176,7 +217,8 @@ version guard, so peers must speak `0.2`.
   `ci.yml`, `release.yml`, README badge), unblocking the fmt/clippy/test gate and
   the dependabot dependency PRs.
 
-[Unreleased]: https://github.com/sepehrmn/NCP/compare/v0.2.3...HEAD
+[Unreleased]: https://github.com/sepehrmn/NCP/compare/v0.2.4...HEAD
+[0.2.4]: https://github.com/sepehrmn/NCP/compare/v0.2.3...v0.2.4
 [0.2.3]: https://github.com/sepehrmn/NCP/compare/v0.2.2...v0.2.3
 [0.2.2]: https://github.com/sepehrmn/NCP/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/sepehrmn/NCP/compare/v0.2.0...v0.2.1

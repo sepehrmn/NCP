@@ -1157,7 +1157,7 @@ dependencies = [
 
 [[package]]
 name = "ncp-core"
-version = "0.2.3"
+version = "0.2.4"
 dependencies = [
  "serde",
  "serde_json",
@@ -1166,7 +1166,7 @@ dependencies = [
 
 [[package]]
 name = "ncp-cpp"
-version = "0.2.3"
+version = "0.2.4"
 dependencies = [
  "ncp-core",
  "serde_json",
@@ -1174,7 +1174,7 @@ dependencies = [
 
 [[package]]
 name = "ncp-gateway"
-version = "0.2.3"
+version = "0.2.4"
 dependencies = [
  "ncp-core",
  "ncp-zenoh",
@@ -1184,7 +1184,7 @@ dependencies = [
 
 [[package]]
 name = "ncp-python"
-version = "0.2.3"
+version = "0.2.4"
 dependencies = [
  "ncp-core",
  "pyo3",
@@ -1193,7 +1193,7 @@ dependencies = [
 
 [[package]]
 name = "ncp-zenoh"
-version = "0.2.3"
+version = "0.2.4"
 dependencies = [
  "ncp-core",
  "serde",
