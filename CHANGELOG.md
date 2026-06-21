@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Documentation
+
+- **NEST chunking / calibration / GIL / MUSIC, documented and source-verified.**
+  `NEST_REALTIME.md` gains a thorough "chunking question" section answering, from the
+  NEST 3.9 source, that (1) `calibrate()`→`pre_run_hook()` runs **once per `Prepare()`**,
+  not per `Run()` (`node_manager.cpp::prepare_node_` is reached only from `prepare_nodes()`
+  in `Prepare()`; `run()` calls only the IO-manager hook) — so NCP's Prepare-once pattern
+  pays calibration once, and the "recalibrate every chunk" cost is the `Simulate()`-per-chunk
+  anti-pattern NCP avoids; (2) **MUSIC also chunks** at `min_delay` ticks (NEST maps MUSIC
+  ports inside that same once-per-`Prepare` calibrate; `run()` clamps to `min_delay`), so it
+  is *not* a tax MUSIC escapes; (3) chunking is **bit-identical science** (ring buffers
+  deliver at full delay across boundaries); (4) the only residual is a small *fixed*
+  per-`Run()` cost that *vanishes* for big networks. Adds implementer caveats (snap
+  `chunk_ms` to a `min_delay` multiple; prefer scheduled-time generators).
+- **Corrected the MUSIC latency claim** in `NEST_REALTIME.md`/`PERFORMANCE.md`: MUSIC is
+  buffered pairwise `MPI_Send`/`MPI_Recv` (Djurfeldt 2010, PMC3240549) with a tick-bound
+  closed-loop floor (~70 ms @ 1 ms tick → ~350 ms @ 50 ms; Weidel 2016), **not** a
+  low-microsecond shared-memory hop — NCP's ~0.1–1 ms transport is *under* that floor, so
+  NCP is not slower (if anything faster) on single-loop reaction latency. The GIL-held
+  verdict is re-stated as source-verified unchanged through NEST 3.10, and the headline
+  "1.68× overlap" is re-labelled an off-GIL-contingent busy-spin *ceiling* (engram's
+  deployed Python NEST path is serial; the native overlap lives only in the Rust gateway).
+- **`scripts/verify_nest_chunking.py`** — a runnable NEST-3.9 proof: counts the
+  `prepare_nodes()` log line (Prepare+N×Run → 1; Simulate×N → N), measures the fixed
+  per-`Run` overhead, and asserts **bit-identical spike times + STDP weights** for
+  chunked vs monolithic.
+
 ### Changed
 
 - **NCP is now project-neutral — no consumer name baked into the protocol.** The

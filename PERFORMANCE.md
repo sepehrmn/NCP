@@ -81,11 +81,21 @@ scheme — MUSIC services its ports each MPI tick, NRP-core marshals DataPacks p
 step, the NEST Server does a REST round trip. NCP's chunked `Prepare`/`Run` +
 **delta readback** is the standard pattern, and after this fix its readback is the
 same **O(new)** MUSIC achieves. The one structural difference is the transport
-hop: MUSIC uses MPI shared memory (lowest latency, same allocation); NCP uses a
-network/IPC transport (slightly higher, but ≪ the control-rate budget — see
-[`NEST_REALTIME.md`](NEST_REALTIME.md)) in exchange for remote, multi-language,
-fleet reach. NCP does **not** claim to beat MPI on raw latency; it competes on
-portability, safety, provenance and observability.
+hop — and the common intuition about it is **backwards**: MUSIC is not a
+low-microsecond shared-memory hop. It exchanges over **buffered pairwise
+`MPI_Send`/`MPI_Recv`** ([Djurfeldt et al. 2010, PMC3240549](https://pmc.ncbi.nlm.nih.gov/articles/PMC3240549/)),
+and its *closed-loop* latency is buffering/tick-bound: ≈**70 ms at a 1 ms tick** rising
+to ≈**350 ms at a 50 ms tick** ([Weidel et al. 2016, *Front. Neuroinform.* 10:31](https://www.frontiersin.org/articles/10.3389/fninf.2016.00031/full)).
+NCP's per-exchange transport (≈0.1 ms Zenoh loopback, ≈0.2–1 ms WS+JSON) is one to two
+orders of magnitude **under** that floor, so on a single closed-loop reaction NCP is
+**not** slower than MUSIC — if anything faster. MUSIC's genuine edge is multi-simulator
+shared-clock co-simulation and bulk intra-HPC spike throughput (see
+[`NEST_REALTIME.md`](NEST_REALTIME.md)), not single-loop latency. The honest asymmetry
+that favours MUSIC is structural, not transport: NCP pays a per-chunk PyNEST/SLI
+round-trip (~0.1 ms host overhead) because Python is NEST's only binding — a soft
+`chunk_ms` floor of ≈1–2 ms in the small-network regime that MUSIC's C++/MPI tick lacks
+(it bites only below ~2 ms ticks on tiny networks). NCP competes on portability, safety,
+provenance, and observability — and cedes no closed-loop-latency crown to MUSIC.
 
 Nor does NCP claim a latency edge over a tuned ROS 2/DDS stack: in single-machine
 64-byte ping-pong, Cyclone DDS reaches ~8 µs (UDP multicast) versus Zenoh-p2p
@@ -163,6 +173,30 @@ third option — releasing the GIL inside PyNEST via Cython `with nogil` — wou
 work but means patching/rebuilding NEST upstream.) Either way, transport ships chunk
 N-1 / buffers chunk N+1 while the NEST process computes chunk N.
 
+> **Read the 1.68× honestly — it is an idealized *ceiling*, not a measured transport
+> result.** The "transport work" in `bench_gil_overlap.py` is a `ctypes` busy-spin that
+> runs 100% in C and never touches the GIL — the most optimistic possible stand-in. The
+> 1.68× therefore holds **only if the real serialize is *also* off-GIL** (Rust `serde` /
+> a PyO3 worker that releases the GIL). A naive `threading.Thread` whose body is Python
+> serialization (e.g. Pydantic `model_dump`) lands at the **~1.08×** Python-thread row,
+> not 1.68× — so option (b) above **must serialize in Rust**, not Python. And the gain
+> is contingent on `T_transport ≈ T_run`: the overlap speedup falls off as ~1.80× at
+> 10 ms-work → ~1.07× at 0.6 ms → ~1.01× at 0.1 ms, so at rate-loop `T_ncp` (sub-ms) the
+> real benefit is single-digit percent, not 68%.
+>
+> **What engram actually deploys:** the in-process Python NEST path
+> (`backends.py::NestSession.step` → `loop.py::NeuroControlLoop.tick`) is **strictly
+> serial** on one thread — `Run`, then read, then send, in sequence. There is no Python
+> `ZenohControlTransport` and no PyO3 background thread; the realized native-thread
+> overlap lives **only** in the separate Rust `ncp-zenoh`/`ncp-gateway` process. That is
+> **fine for the rate-coded loop** (`T_ncp` sub-ms ≪ `T_run`), and is the standing
+> ceiling **only** for high-rate raw-spike/`V_m` streaming, where serialize is O(events)
+> (~11 ms / 50k spikes) and rivals `T_run`. If that workload ships, route **only the
+> observation plane** through the off-GIL Rust `ncp-zenoh` bulk column codec and batch
+> generator updates into one `nest.SetStatus`; keep the control loop serial. (Do **not**
+> reach for free-threaded CPython: importing today's NEST under 3.13t/3.14t re-enables
+> the GIL process-wide and buys nothing for the OpenMP kernel.)
+
 Caveat: overlap only *helps* when transport work is comparable to per-chunk compute
 (the real-time regime). For a compute-bound heavy net it is moot (best honest case
 stayed ~55 ms period at chunk_ms=10); the lever there is the real-time factor.
@@ -184,8 +218,15 @@ the command, the environment, and the known caveats.
 
 * **Hardware / OS:** 16 physical cores, 128 GB RAM (the reference machine).
 * **Simulator:** **NEST 3.8.0**, OpenMP-only, single MPI rank. CLAUDE.md pins the
-  project target at NESTML 8.2.0 → **NEST 3.9**; numbers may shift slightly on
-  3.9. Each script prints `nest.__version__` so reproductions are self-labelling.
+  project target at NESTML 8.2.0 → **NEST 3.9**; the absolute hardware-specific
+  *timings* may shift slightly on 3.9, but the load-bearing **GIL verdict does not**:
+  `nest.Run()`/`Simulate()` holds the CPython GIL identically on 3.8.0, **3.9, and
+  3.10** — source-confirmed (no `with nogil` around `pEngine.execute` in
+  `pynestkernel.pyx`, nor around `run(t)` in 3.10's `nestkernel_api.pyx`; 3.10 even
+  rewrote PyNEST from SLI to a direct C++ API and still added none). Each script
+  prints `nest.__version__` so reproductions are self-labelling; run
+  [`scripts/verify_nest_chunking.py`](scripts/verify_nest_chunking.py) to re-confirm
+  the chunking/equivalence claims on your 3.9 build.
 * **Build is excluded from the timer.** Network construction (`Create`/`Connect`)
   runs *outside* `perf_counter`; only the simulate phase is timed. (Build is itself
   characterized in [`NEST_REALTIME.md`](NEST_REALTIME.md): ~linear in synapse count,
