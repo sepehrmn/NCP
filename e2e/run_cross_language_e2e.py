@@ -27,6 +27,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shutil
 import socket
 import subprocess
 import sys
@@ -90,13 +91,18 @@ def main() -> int:
               "Component halves still gate: ncp-zenoh cross_session_rpc + the behavioral corpus.")
         return 0
 
-    # Build the Rust client (proves a Rust peer drives the Python server).
+    # Build the Rust client (proves a Rust peer drives the Python server). Distinguish
+    # "no toolchain" (legitimate skip) from "cargo present but build BROKE" (a real
+    # failure — e.g. API drift — that must NOT pass green).
+    if shutil.which("cargo") is None:
+        print("SKIP: cargo not on PATH (no Rust toolchain).")
+        return 0
     rust_bin = NCP_ROOT / "target" / "debug" / "examples" / "ncp_tcp_client"
     print("building the Rust NCP client …")
     if subprocess.run(["cargo", "build", "-p", "ncp-core", "--example", "ncp_tcp_client"],
                       cwd=NCP_ROOT).returncode != 0:
-        print("SKIP: cargo build failed (no Rust toolchain?)")
-        return 0
+        print("FAIL: the Rust e2e client failed to build (cargo present) — API drift?")
+        return 1
 
     port = _free_port()
     srv = subprocess.Popen([sys.executable, "-m", "backend.neurocontrol.bridge_server",
