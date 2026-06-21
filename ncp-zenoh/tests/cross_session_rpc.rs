@@ -170,3 +170,69 @@ async fn ncp_rpc_over_real_zenoh_tcp_link() {
         .expect("close over zenoh");
     assert!(closed.ok, "session must close");
 }
+
+/// A server one wire-minor behind: a valid reply except its `ncp_version` is the
+/// previous wire ("0.4"). This is the cutover hazard — a leftover old peer on the bus.
+fn stale_version_handler(req: Vec<u8>) -> Vec<u8> {
+    let v: Value = serde_json::from_slice(&req).unwrap_or_else(|_| json!({}));
+    let sid = v.get("session_id").and_then(Value::as_str).unwrap_or("s");
+    let reply = json!({
+        "kind": "session_opened", "ncp_version": "0.4", "session_id": sid, "ok": true,
+        "backend": "mock", "contract_hash": CONTRACT_HASH,
+        "provenance": {"network_ref": "x", "backend": "mock", "calibrated_posterior": false,
+                       "is_simulation_output": true, "advisory_only": true},
+    });
+    serde_json::to_vec(&reply).unwrap()
+}
+
+/// SHOULD-FIX #4b (Rust side): the HARD version gate fires across the real transport.
+/// A 0.4 `session_opened` reply must be REJECTED by this 0.5 client (the handshake
+/// `negotiate`s the reply's version) — never coerced — so a half-upgraded fleet
+/// fails closed instead of two wire revisions silently mis-decoding each other.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn mixed_version_open_is_rejected_over_the_wire() {
+    let port = free_port();
+    let server = ZenohBus::with_config(listen_cfg(port), Keys::default())
+        .await
+        .expect("open server session (listen)");
+    server
+        .serve_rpc(stale_version_handler)
+        .await
+        .expect("serve_rpc");
+
+    let client_bus = ZenohBus::with_config(connect_cfg(port), Keys::default())
+        .await
+        .expect("open client session (connect)");
+    let client = ZenohNcpClient::new(client_bus);
+    let open_msg = OpenSession {
+        session_id: "uav1".into(),
+        network: NetworkRef {
+            kind: NetworkRefKind::Builtin,
+            ref_: "iaf_psc_alpha".into(),
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+
+    // open() is always Err here: before the queryable is reachable it is a "no reply"
+    // error; once reachable it is the VERSION-gate error. Poll until we see the gate
+    // (error text mentions "version"), so the test asserts the rejection, not the
+    // not-yet-ready transient — and never coerces a 0.4 reply into an Ok.
+    let mut rejected = false;
+    for _ in 0..100 {
+        match client.open(&open_msg).await {
+            Ok(_) => panic!("a 0.4 session_opened must be rejected by a 0.5 client, not accepted"),
+            Err(e) => {
+                if e.to_string().contains("version") {
+                    rejected = true;
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(100)).await;
+            }
+        }
+    }
+    assert!(
+        rejected,
+        "the hard version gate must reject a 0.4 session_opened over the wire within ~10s"
+    );
+}

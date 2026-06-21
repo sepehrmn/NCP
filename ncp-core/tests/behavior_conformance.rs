@@ -16,7 +16,7 @@
 
 use ncp_core::{
     check_version, contract_status, validate, CommandFrame, ContractStatus, SafetyGovernor,
-    SafetyLimits, SensorFrame,
+    SafetyLimits, SensorFrame, CONTRACT_HASH, NCP_VERSION,
 };
 use serde_json::Value;
 use std::path::PathBuf;
@@ -157,4 +157,26 @@ fn govern_corpus() {
             );
         }
     }
+}
+
+#[test]
+fn wire_pins_match_corpus_single_source() {
+    // SHOULD-FIX #4a: `NCP_VERSION` and `CONTRACT_HASH` are independent hardcoded
+    // constants in each peer (Rust here, TS, Python). Pin BOTH to the corpus header
+    // so the corpus is the single cross-language source of wire truth — a peer that
+    // bumps the wire but forgets the corpus (or vice versa) fails here, the same way
+    // `contract_hash_matches_proto` ties the hash to the proto. (The Python binding
+    // and ncp-ts assert the same against this corpus; check-version-coherence.sh
+    // adds the {ncp-core, ncp-ts, corpus} cross-check.)
+    let corpus = load_corpus();
+    assert_eq!(
+        NCP_VERSION,
+        corpus["ncp_version"].as_str().unwrap(),
+        "ncp-core NCP_VERSION must equal the behavior corpus ncp_version"
+    );
+    assert_eq!(
+        CONTRACT_HASH,
+        corpus["contract_hash"].as_str().unwrap(),
+        "ncp-core CONTRACT_HASH must equal the behavior corpus contract_hash"
+    );
 }

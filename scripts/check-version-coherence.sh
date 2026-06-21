@@ -184,13 +184,27 @@ ts_wire() {
   [[ -f "$f" ]] || return
   grep -m1 -oE "NCP_VERSION = '[^']+'" "$f" | grep -oE "'[^']+'" | tr -d "'"
 }
+# The language-neutral behavior corpus is the SINGLE cross-language source of wire
+# truth (ncp-core/tests/behavior_conformance.rs and the Python/TS replays pin their
+# constants to it). Assert it agrees with the Rust + TS constants here too, so a
+# release that bumps a peer but not the corpus (or vice versa) is caught.
+corpus_wire() {
+  local f="$REPO_ROOT/conformance/behavior/vectors.json"
+  [[ -f "$f" ]] || return
+  grep -m1 -oE '"ncp_version"[[:space:]]*:[[:space:]]*"[^"]+"' "$f" | grep -oE '"[^"]+"$' | tr -d '"'
+}
 CORE_WIRE="$(core_wire || true)"
 TS_WIRE="$(ts_wire || true)"
+CORPUS_WIRE="$(corpus_wire || true)"
 if [[ -n "$CORE_WIRE" ]]; then
   printf '  %-22s %s\n' "wire (ncp-core)" "$CORE_WIRE"
   [[ -n "$TS_WIRE" ]] && printf '  %-22s %s\n' "wire (ncp-ts)" "$TS_WIRE"
+  [[ -n "$CORPUS_WIRE" ]] && printf '  %-22s %s\n' "wire (corpus)" "$CORPUS_WIRE"
   if [[ -n "$TS_WIRE" && "$TS_WIRE" != "$CORE_WIRE" ]]; then
     problems+=("ncp-ts wire NCP_VERSION '$TS_WIRE' != ncp-core '$CORE_WIRE'")
+  fi
+  if [[ -n "$CORPUS_WIRE" && "$CORPUS_WIRE" != "$CORE_WIRE" ]]; then
+    problems+=("behavior corpus ncp_version '$CORPUS_WIRE' != ncp-core '$CORE_WIRE'")
   fi
 fi
 
@@ -209,13 +223,23 @@ ts_hash() {
   [[ -f "$f" ]] || return
   grep -m1 -oE "NCP_CONTRACT_HASH = '[^']+'" "$f" | grep -oE "'[^']+'" | tr -d "'"
 }
+corpus_hash() {
+  local f="$REPO_ROOT/conformance/behavior/vectors.json"
+  [[ -f "$f" ]] || return
+  grep -m1 -oE '"contract_hash"[[:space:]]*:[[:space:]]*"[^"]+"' "$f" | grep -oE '"[^"]+"$' | tr -d '"'
+}
 CORE_HASH="$(core_hash || true)"
 TS_HASH="$(ts_hash || true)"
+CORPUS_HASH="$(corpus_hash || true)"
 if [[ -n "$CORE_HASH" ]]; then
   printf '  %-22s %s\n' "CONTRACT_HASH (core)" "$CORE_HASH"
   [[ -n "$TS_HASH" ]] && printf '  %-22s %s\n' "CONTRACT_HASH (ts)" "$TS_HASH"
+  [[ -n "$CORPUS_HASH" ]] && printf '  %-22s %s\n' "CONTRACT_HASH (corpus)" "$CORPUS_HASH"
   if [[ -n "$TS_HASH" && "$TS_HASH" != "$CORE_HASH" ]]; then
     problems+=("ncp-ts NCP_CONTRACT_HASH '$TS_HASH' != ncp-core '$CORE_HASH'")
+  fi
+  if [[ -n "$CORPUS_HASH" && "$CORPUS_HASH" != "$CORE_HASH" ]]; then
+    problems+=("behavior corpus contract_hash '$CORPUS_HASH' != ncp-core '$CORE_HASH'")
   fi
 fi
 
