@@ -25,17 +25,27 @@ together, but a PATCH that touches only code/docs/build artifacts (e.g. `0.3.0` 
 (what the `buf breaking` gate compares against); the crate at that-or-later tag is
 wire-`0.3`-compatible.
 
-**Pre-1.0 caveat (current):** while `0.x`, a **minor bump is treated as
-breaking** — the version guard fails closed on any `0.x` minor difference
-(`check_version`). Pin an exact version (`tag = "v0.3.0"`) for anything you build
-against. `0.x` is explicitly unstable.
+**Additive evolution is NON-breaking (since v0.4).** Adding an *optional* field or a
+new message type does **not** bump the minor — protobuf/serde ignore unknown fields,
+so a peer on an older minor keeps working. The minor bumps **only** for genuinely
+incompatible changes (removing/renaming a field, changing a type, removing an enum
+value, changing semantics). This corrects the earlier over-aggressive rule that forced
+fleet re-pins (`v0.2.5/6/7/8`, and `0.2→0.3` for the merely-additive `contract_hash`
+field). Two layers do the work: **`ncp_version`** is the hard *compatibility* gate
+(`check_version`, exact `(major, minor)` pre-1.0), and **`CONTRACT_HASH`** is an
+*advisory* identity signal (see §"Contract hash") that flags "same wire version, newer
+contract revision" without breaking anyone.
 
-The current wire is **`0.3`** (`ncp_version = "0.3"`); receivers check the full
-`ncp_version` and pre-1.0 require an exact `(major, minor)` match — any `0.x`
-minor difference is fail-closed (see §version negotiation). `0.3`
-added the symmetric `contract_hash` handshake field on `OpenSession`/`SessionOpened`
-over `0.2` — additive, but a pre-1.0 minor bump, so a `0.2` peer is fail-closed
-rejected. (`0.2` had added the neuron-family wire (#10) and bulk column codec (#6).)
+**Pre-1.0 caveat:** while `0.x`, an *incompatible* minor bump is breaking and the
+version guard fails closed on a minor difference (`check_version`). Pin an exact
+version (`tag = "v0.4.0"`). `0.x` is explicitly unstable.
+
+The current wire is **`0.4`** (`ncp_version = "0.4"`). `0.4` is the **decoupling +
+robustness** release: the proto `package` was renamed `engram.ncp.v0 → ncp.v0`
+(naming-only — hash-neutral, see below), the contract handshake became **advisory**
+(version is the gate; a hash mismatch is logged, not rejected), and the additive-is-
+non-breaking policy above was adopted. (`0.3` had added the `contract_hash` handshake
+field; `0.2` the neuron-family wire (#10) and bulk column codec (#6).)
 
 ## Enforcement: `buf breaking`
 
@@ -49,37 +59,42 @@ CI runs `buf lint`; `buf breaking` gates the wire against the first tag of the
 current wire (`v0.3.0`, the wire-`0.3` baseline — see `.github/workflows/ci.yml`).
 A change that trips `WIRE`/`WIRE_JSON` **must** bump MAJOR (or MINOR while `0.x`).
 
-## Per-session version + contract handshake (landed in v0.3.0)
+## Per-session version + contract handshake
 
-`check_version` / `negotiate` are **fail-closed library entry points**: a peer (or
-gateway) calls `negotiate(peer_version, peer_hash)` at session setup and refuses a
-mismatch (reject, never coerce). As of **v0.3.0** this is wired into an explicit
-`open_session` handshake (it is still not auto-invoked on the *data-plane* receive
-path — a version-mismatched frame there is handled by the deserializer as a parse
-failure / dropped frame, not an explicit version error):
+At session setup the client sends its `ncp_version` **and** `contract_hash` in
+`OpenSession`; the reference server (engram's `SessionService.handle`) and the Zenoh
+client (`ncp-zenoh::ZenohNcpClient::open`) call `negotiate(peer_version, peer_hash)`.
+The two checks are **separated by concern** (since v0.4):
 
-1. The client sends its `ncp_version` **and** `contract_hash` in `OpenSession`.
-2. The server verifies both (`negotiate`) before doing any work; if it cannot serve
-   a compatible major/minor, or the contract hash differs, it replies
-   `SessionOpened{ ok: false, error: "…" }` and the session does not open (fail
-   closed, never silently coerce). The reference server half is engram's
-   `SessionService.handle`; the client half is `ncp-zenoh::ZenohNcpClient::open`,
-   which `negotiate`s the `SessionOpened.contract_hash` it gets back.
-3. Peers MAY support multiple versions but MUST agree on exactly one per session.
+1. **`ncp_version` is the hard *compatibility* gate.** An incompatible version
+   (`check_version` — exact `(major, minor)` pre-1.0) is rejected, never coerced: the
+   server replies `SessionOpened{ ok: false, error: "…" }` and the session does not
+   open. "Can we speak the same wire at all?"
+2. **`contract_hash` is an *advisory* identity signal.** `negotiate` returns a
+   `ContractStatus` (`Match` / `NotAdvertised` / `Mismatch`); a `Mismatch` is **logged,
+   not rejected**. "Are we on the exact same contract revision?" A mismatch within a
+   compatible version is expected (e.g. one peer added an optional field — non-breaking
+   per the additive policy) and must not break the flow. A `verify_contract` strict
+   opt-in remains for deployments that *mandate* an exact revision (safety-certified
+   configs).
 
-This turns "I refuse" into "we agreed (or explicitly did not)", which is what a
-multi-peer protocol needs.
+Separating the two means additive evolution and naming-only proto changes never break
+a version-compatible `engram→crebain` / `engram→pid_vla` flow, while drift is still
+surfaced for operators.
 
 ## Contract hash (the wire-identity digest)
 
 `ncp_version` says *which version* a peer speaks; `CONTRACT_HASH` says *which exact
-contract* — it is the FNV-1a digest of the **canonicalized** `proto/ncp.proto`
-(`canonical_proto` strips `//` and `/* */` comments — respecting string literals —
-and normalizes whitespace). Two peers agree iff their *semantic* contracts agree,
-**independent of comments or formatting** (a comment-only edit no longer flips the
-hash — the churn the `v0.2.5`/`v0.2.6` releases documented). It is **not** a
+contract* — it is the FNV-1a digest of the **wire-semantically canonicalized**
+`proto/ncp.proto`. `canonical_proto` reduces the proto to its wire-relevant content:
+it strips `//` and `/* */` comments (respecting string literals), normalizes
+whitespace, **and drops the non-wire declaration lines** `syntax` / `package` /
+`import` / top-level `option`. So a purely *naming* change — e.g. the v0.4 rename
+`package engram.ncp.v0 → ncp.v0` that decoupled the protocol's identity from a
+consumer — leaves the wire identical and is **hash-neutral**; only a real wire change
+(add/remove/retype a field, change an enum value) flips the hash. It is **not** a
 cryptographic MAC: adversarial integrity is the transport's job (mTLS); the hash
-detects *accidental* drift / a post-agreement "rug-pull" schema mutation.
+*detects* accidental drift, and per the handshake above a mismatch is advisory.
 
 **Why it is a hardcoded constant** (`ncp_core::CONTRACT_HASH`, and the mirrored
 `backend/neurocontrol/protocol.py::CONTRACT_HASH`) rather than computed at runtime:

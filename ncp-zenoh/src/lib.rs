@@ -578,16 +578,21 @@ impl ZenohNcpClient {
         Self { bus }
     }
 
-    /// Open a session; returns the parsed `SessionOpened`. Enforces the full
-    /// handshake the core was built for ("negotiate, reject, never coerce"): a
-    /// `SessionOpened` whose `ncp_version` is incompatible **or** whose advertised
-    /// `contract_hash` does not match ours is rejected, not coerced. This is the
-    /// client half of the symmetric contract-hash handshake — the server verifies
-    /// the `OpenSession.contract_hash` we send (defaulted to our own).
+    /// Open a session; returns the parsed `SessionOpened`. The handshake gates on
+    /// **version compatibility** (a `SessionOpened` whose `ncp_version` is
+    /// incompatible is rejected, never coerced) and treats the `contract_hash` as an
+    /// **advisory** signal: a hash mismatch is logged but does *not* fail the session,
+    /// so a version-compatible flow keeps working when a peer is on a different
+    /// contract revision (e.g. it added an optional field). See
+    /// [`ncp_core::ContractStatus`].
     pub async fn open(&self, msg: &ncp_core::OpenSession) -> Result<ncp_core::SessionOpened> {
         let opened: ncp_core::SessionOpened = self.rpc(msg, "session_opened").await?;
-        ncp_core::negotiate(&opened.ncp_version, opened.contract_hash.as_deref())
-            .map_err(|e| ZenohError(format!("session_opened handshake: {e}")))?;
+        let status = ncp_core::negotiate(&opened.ncp_version, opened.contract_hash.as_deref())
+            .map_err(|e| ZenohError(format!("session_opened version: {e}")))?;
+        if let Some(advisory) = status.advisory() {
+            // Advisory, not fatal: log so operators can spot a fleet on mixed revisions.
+            eprintln!("[ncp-zenoh] {advisory}");
+        }
         Ok(opened)
     }
 

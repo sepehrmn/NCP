@@ -23,7 +23,7 @@ use std::collections::BTreeMap;
 /// Protocol version (semver). While pre-1.0 (`0.x`) receivers check the full
 /// `(major, minor)`; once `>=1.0` they check the **major** only. See
 /// [`check_version`].
-pub const NCP_VERSION: &str = "0.3";
+pub const NCP_VERSION: &str = "0.4";
 
 fn ncp_version() -> String {
     NCP_VERSION.to_string()
@@ -973,7 +973,7 @@ pub fn check_version(version: &str, strict: bool) -> Result<bool, NcpVersionErro
 /// property — and still needs a per-language anchor for cross-language parity. The
 /// constant-plus-CI-guard form is kept on purpose. See `VERSIONING.md` (§"Contract
 /// hash") for the full rationale and the handshake design.
-pub const CONTRACT_HASH: &str = "3e639fb1aa20e530";
+pub const CONTRACT_HASH: &str = "2cf0763ad61e4f1c";
 
 /// FNV-1a (64-bit) hex digest of `bytes`. Dependency-free (no sha/digest crate),
 /// adequate for the contract-pinning integrity-vs-accidental-drift use. It is
@@ -989,17 +989,25 @@ pub fn fnv1a_hex(bytes: &[u8]) -> String {
 }
 
 /// Canonicalize a `.proto` source so the contract hash depends only on the
-/// *semantic* wire definition, not on comments or incidental whitespace.
+/// *wire-semantic* definition — the message/field/enum structure — not on
+/// comments, formatting, **or non-wire declarations** (`syntax`, `package`,
+/// `import`, top-level `option`).
 ///
-/// Protobuf comments and formatting never affect the wire encoding (the field
-/// numbers, types, and modifiers do), yet hashing the raw bytes made a
-/// comment-only edit flip [`CONTRACT_HASH`] and force a spurious version bump
-/// (see the `v0.2.5`/`v0.2.6` CHANGELOG entries). This pass removes `//` line
-/// comments and `/* … */` block comments — while respecting string literals so a
-/// `//` *inside* a quoted default is preserved — then trims each line and drops
-/// blank lines, collapsing pure-formatting churn. It is deliberately
-/// dependency-free (no protoc/buf): adequate for the accidental-drift threat
-/// model this hash targets (adversarial integrity is the transport's job).
+/// Protobuf's wire encoding is determined by field numbers, types, and modifiers
+/// — **never** by comments, by the `package` namespace, or by file options. So a
+/// purely *naming* change (e.g. renaming the package `engram.ncp.v0 → ncp.v0` to
+/// decouple the protocol's identity from a consumer) leaves the wire identical and
+/// MUST leave [`CONTRACT_HASH`] identical too. This pass therefore:
+/// 1. removes `//` line and `/* … */` block comments — respecting string literals
+///    so a `//` *inside* a quoted default is preserved,
+/// 2. drops top-level non-wire declaration lines (`syntax`/`package`/`import`/
+///    `option`), which are codegen/deployment metadata, not wire shape,
+/// 3. trims each line and drops blank lines.
+///
+/// The result is that cosmetic and naming changes are hash-neutral, while any real
+/// wire change (add/remove/retype a field, change an enum value) still flips the
+/// hash. Dependency-free (no protoc/buf): adequate for the accidental-drift
+/// detection this hash targets (adversarial integrity is the transport's job).
 pub fn canonical_proto(bytes: &[u8]) -> Vec<u8> {
     let text = String::from_utf8_lossy(bytes);
     let mut out = String::with_capacity(text.len());
@@ -1046,12 +1054,21 @@ pub fn canonical_proto(bytes: &[u8]) -> Vec<u8> {
             _ => out.push(c),
         }
     }
-    // Normalize whitespace: trim each line, drop blank lines, single '\n' join.
+    // Normalize whitespace and drop non-wire declaration lines. `syntax`,
+    // `package`, `import`, and top-level `option` are codegen/deployment metadata
+    // that never affect the wire encoding, so a rename of any of them must NOT
+    // change the contract hash.
     let normalized = out
         .lines()
-        .map(str::trim_end)
         .map(str::trim_start)
+        .map(str::trim_end)
         .filter(|line| !line.is_empty())
+        .filter(|line| {
+            !(line.starts_with("syntax")
+                || line.starts_with("package ")
+                || line.starts_with("import ")
+                || line.starts_with("option "))
+        })
         .collect::<Vec<_>>()
         .join("\n");
     normalized.into_bytes()
@@ -1066,31 +1083,82 @@ pub fn contract_hash_of_proto(bytes: &[u8]) -> String {
     fnv1a_hex(&canonical_proto(bytes))
 }
 
-/// Verify a peer-advertised contract hash against ours. `None` = the peer did not
-/// advertise one (older / minimal peer): accepted within a compatible version,
-/// since [`check_version`] still gates the wire shape. `Some(h)` must equal
-/// [`CONTRACT_HASH`] exactly, else a typed rejection — never coerce.
-pub fn verify_contract(peer_hash: Option<&str>) -> Result<(), NcpVersionError> {
-    match peer_hash {
-        None => Ok(()),
-        Some(h) if h == CONTRACT_HASH => Ok(()),
-        Some(h) => Err(NcpVersionError(format!(
-            "NCP contract-hash mismatch: peer {h:?}, want {CONTRACT_HASH:?} \
-             (post-handshake schema mutation?)"
-        ))),
+/// Outcome of comparing a peer's advertised [`CONTRACT_HASH`] to ours.
+///
+/// This is **advisory**: a [`ContractStatus::Mismatch`] does *not* fail the
+/// handshake. [`NCP_VERSION`] (via [`check_version`]) is the *compatibility* gate —
+/// "can we speak the same wire at all"; the contract hash is a finer *identity*
+/// signal — "are we on the exact same contract revision". Conflating the two
+/// (fail-closed on hash) would break a version-compatible flow the moment one peer
+/// added an optional field or renamed a non-wire declaration. So a mismatch is
+/// surfaced for logging/telemetry, and the session proceeds. (The hash is not a
+/// cryptographic MAC; adversarial integrity is the transport's job — mTLS.)
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ContractStatus {
+    /// Peer advertised a hash equal to ours — same contract revision.
+    Match,
+    /// Peer advertised no hash (older/minimal peer). Accepted within a compatible version.
+    NotAdvertised,
+    /// Peer advertised a *different* hash. Advisory only — log it; the session still opens.
+    Mismatch { peer: String },
+}
+
+impl ContractStatus {
+    /// `true` unless the peer advertised a different hash.
+    pub fn is_match(&self) -> bool {
+        !matches!(self, ContractStatus::Mismatch { .. })
+    }
+    /// A human-readable advisory string for a mismatch (for logging), else `None`.
+    pub fn advisory(&self) -> Option<String> {
+        match self {
+            ContractStatus::Mismatch { peer } => Some(format!(
+                "NCP contract-hash differs: peer {peer:?}, ours {CONTRACT_HASH:?} — \
+                 versions are compatible so the session proceeds, but the peers are on \
+                 different contract revisions (advisory)"
+            )),
+            _ => None,
+        }
     }
 }
 
-/// Full handshake gate: the `(major, minor)` version must match strictly AND the
-/// peer contract hash (if advertised) must equal ours. The single entry point a
-/// control-plane `open_session` should call — "negotiate, reject, never coerce"
-/// (ROADMAP P1). Returns the first failure as a typed error.
+/// Classify a peer-advertised contract hash against ours (advisory; see
+/// [`ContractStatus`]). Never fails — `None` = not advertised, `Some(==ours)` =
+/// match, `Some(!=ours)` = mismatch.
+pub fn contract_status(peer_hash: Option<&str>) -> ContractStatus {
+    match peer_hash {
+        None => ContractStatus::NotAdvertised,
+        Some(h) if h == CONTRACT_HASH => ContractStatus::Match,
+        Some(h) => ContractStatus::Mismatch {
+            peer: h.to_string(),
+        },
+    }
+}
+
+/// **Strict** contract verification (opt-in): a typed error on hash mismatch.
+/// Most callers want [`negotiate`] (advisory). Use this only where a deployment
+/// has decided that an exact contract-revision match is mandatory and a mismatch
+/// must fail closed (e.g. a safety-certified configuration).
+pub fn verify_contract(peer_hash: Option<&str>) -> Result<(), NcpVersionError> {
+    match contract_status(peer_hash) {
+        ContractStatus::Mismatch { peer } => Err(NcpVersionError(format!(
+            "NCP contract-hash mismatch: peer {peer:?}, want {CONTRACT_HASH:?}"
+        ))),
+        _ => Ok(()),
+    }
+}
+
+/// Handshake gate a control-plane `open_session` calls. The `(major, minor)`
+/// version MUST be compatible (fail-closed [`NcpVersionError`] otherwise) — this is
+/// the wire-compatibility gate. The contract hash is returned as an **advisory**
+/// [`ContractStatus`] (a mismatch does NOT fail the handshake; the caller logs it).
+/// This separation lets additive optional fields and non-wire renames evolve the
+/// contract without breaking version-compatible peers.
 pub fn negotiate(
     peer_version: &str,
     peer_contract_hash: Option<&str>,
-) -> Result<(), NcpVersionError> {
+) -> Result<ContractStatus, NcpVersionError> {
     check_version(peer_version, true)?;
-    verify_contract(peer_contract_hash)
+    Ok(contract_status(peer_contract_hash))
 }
 
 /// Best-effort version diagnostic for a raw inbound frame. If it carries an
@@ -1226,14 +1294,14 @@ mod tests {
     fn check_version_rejects_malformed_minor_no_coercion() {
         // core-wire-1: a present-but-garbage minor or a trailing component must
         // REJECT (Err in strict mode), never silently coerce to minor 0. Tested
-        // here against the live "0.3": none of these may parse to (0, 3).
+        // here against the live "0.4": none of these may parse to (0, 4).
         for bad in [
             "0.GARBAGE",
-            "0.3.1",
-            "0.3x",
+            "0.4.1",
+            "0.4x",
             "0.",
-            "0.3.0",
-            "x.3",
+            "0.4.0",
+            "x.4",
             "0.0.0.0",
         ] {
             assert!(
@@ -1241,9 +1309,9 @@ mod tests {
                 "malformed version {bad:?} must be rejected, not coerced"
             );
         }
-        // Exact match passes; a missing minor means 0 and so mismatches 0.3.
-        assert_eq!(check_version("0.3", true), Ok(true));
-        assert!(check_version("0", true).is_err(), "0 -> (0,0) != (0,3)");
+        // Exact match passes; a missing minor means 0 and so mismatches 0.4.
+        assert_eq!(check_version("0.4", true), Ok(true));
+        assert!(check_version("0", true).is_err(), "0 -> (0,0) != (0,4)");
         // Non-strict mode surfaces the same rejection as Ok(false), not a coerced pass.
         assert_eq!(check_version("0.1", false), Ok(false));
     }
@@ -1280,6 +1348,27 @@ mod tests {
             contract_hash_of_proto(commented.as_bytes()),
             base,
             "comment/whitespace-only edits must not change the contract hash"
+        );
+
+        // A NAMING-ONLY change (the proto `package`) must NOT change the hash — the
+        // wire is identical, only the codegen namespace differs (the v0.4 decoupling
+        // of `engram.ncp.v0 -> ncp.v0` is hash-neutral by construction).
+        let renamed =
+            String::from_utf8_lossy(&proto).replace("package ncp.v0;", "package engram.ncp.v0;");
+        assert_eq!(
+            contract_hash_of_proto(renamed.as_bytes()),
+            base,
+            "a package/naming-only change must NOT change the contract hash"
+        );
+        // A top-level option line must also be hash-neutral (non-wire metadata).
+        let optioned = format!(
+            "{}\noption go_package = \"x\";\n",
+            String::from_utf8_lossy(&proto)
+        );
+        assert_eq!(
+            contract_hash_of_proto(optioned.as_bytes()),
+            base,
+            "a top-level option must not change the contract hash"
         );
 
         // A real wire change (a new field) MUST change the hash.
@@ -1348,14 +1437,32 @@ mod tests {
     }
 
     #[test]
-    fn negotiate_gates_version_and_contract() {
-        // Compatible version + matching (or absent) hash -> Ok.
-        assert!(negotiate(NCP_VERSION, Some(CONTRACT_HASH)).is_ok());
-        assert!(negotiate(NCP_VERSION, None).is_ok());
-        // Hash mismatch is a typed rejection even when the version matches.
-        assert!(negotiate(NCP_VERSION, Some("deadbeefdeadbeef")).is_err());
-        // Version mismatch rejects regardless of the hash.
+    fn negotiate_gates_version_advisory_contract() {
+        // Version is the HARD gate; contract hash is ADVISORY.
+        assert_eq!(
+            negotiate(NCP_VERSION, Some(CONTRACT_HASH)),
+            Ok(ContractStatus::Match)
+        );
+        assert_eq!(
+            negotiate(NCP_VERSION, None),
+            Ok(ContractStatus::NotAdvertised)
+        );
+        // Hash mismatch does NOT fail the handshake — it is surfaced as advisory so a
+        // version-compatible flow (e.g. one peer added an optional field) keeps working.
+        let status = negotiate(NCP_VERSION, Some("deadbeefdeadbeef")).expect("version ok");
+        assert!(matches!(status, ContractStatus::Mismatch { .. }));
+        assert!(!status.is_match());
+        assert!(status.advisory().is_some());
+        // Version mismatch still rejects (hard gate), regardless of the hash.
         assert!(negotiate("0.1", Some(CONTRACT_HASH)).is_err());
+    }
+
+    #[test]
+    fn verify_contract_strict_still_fails_closed_opt_in() {
+        // The opt-in strict path still rejects a mismatch, for safety-certified configs.
+        assert!(verify_contract(Some(CONTRACT_HASH)).is_ok());
+        assert!(verify_contract(None).is_ok());
+        assert!(verify_contract(Some("deadbeefdeadbeef")).is_err());
     }
 
     #[test]

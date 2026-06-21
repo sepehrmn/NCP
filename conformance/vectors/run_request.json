@@ -1,5 +1,5 @@
 {
-  "ncp_version": "0.3",
+  "ncp_version": "0.4",
   "kind": "run_request",
   "session_id": "vec-open-1",
   "duration_ms": 1000.0,

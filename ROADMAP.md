@@ -20,7 +20,7 @@ paper-reproduction claim, and the provenance discriminators are mandatory and
 fail-closed precisely to keep that boundary machine-checkable. It is a single
 reference SDK (proto-native — `proto/ncp.proto` normative, `ncp-core` the Rust
 reference implementation; Python via PyO3, TypeScript types via ts-rs, a C ABI for
-C/C++) with field-set-parity drift guards, not yet a multi-implementation program. It is **pre-1.0** (current wire `0.3` — `v0.3.0` added the symmetric contract-hash handshake field; the wire-`0.2` lineage was `v0.2.0`…`v0.2.8`): the wire
+C/C++) with field-set-parity drift guards, not yet a multi-implementation program. It is **pre-1.0** (current wire `0.4` — `v0.4.0` is the decoupling+robustness release (consumer-neutral proto package, advisory contract handshake, additive-is-non-breaking); earlier wires: `0.3` added the contract-hash field, `0.2` the neuron-family + bulk codec): the wire
 may change, minor versions are treated as breaking, and the version guard fails
 rather than silently coercing. NCP's contribution is a typed, provenance-first, safety-gated wire
 contract — not novel control science and not the first SNN-in-the-loop robot loop
@@ -100,9 +100,15 @@ than coercing). But it is a one-sided local guard with no integrity binding.
   churn the `v0.2.5`/`v0.2.6` releases documented. **(v0.3.0)** the hash is now carried in
   the control-plane handshake envelope: `OpenSession`/`SessionOpened` gained a `contract_hash`
   field, `ncp-zenoh::open` calls `negotiate(version, hash)` (client half) and engram's
-  `SessionService.handle` verifies the incoming hash (server half), and the Python peer
-  recomputes the same hash from the proto (byte-identical `canonical_proto` port). *Remaining:*
-  recompute it in the TS/C++ peers too (Rust + Python done), and upgrade FNV → a
+  `SessionService.handle` checks the incoming hash (server half), and the Python peer
+  recomputes the same hash from the proto (byte-identical `canonical_proto` port).
+  **(v0.4.0)** the separation of concerns was completed: `ncp_version` is the *hard
+  compatibility gate*, and the contract hash is an **advisory identity signal**
+  (`negotiate` returns `ContractStatus`; a mismatch is logged, not rejected) — so
+  additive evolution and the consumer-neutral `package ncp.v0` rename don't break a
+  version-compatible flow. `canonical_proto` is now wire-semantic (drops
+  `package`/`option`/`import`), so naming changes are hash-neutral. *Remaining:*
+  recompute the hash in the TS/C++ peers (Rust + Python done), and upgrade FNV → a
   signed/cryptographic digest if the threat model needs adversarial (not just accidental)
   integrity.
 - **Keep failing closed. (Hardened.)** `check_version` no longer coerces a malformed

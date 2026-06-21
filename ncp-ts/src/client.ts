@@ -27,7 +27,7 @@ import type {
 } from './generated'
 
 /** The protocol version this client stamps on every request (`ncp_version`). */
-export const NCP_VERSION = '0.3'
+export const NCP_VERSION = '0.4'
 
 /**
  * JSON-wire view of a canonical type. ts-rs emits Rust `i64` fields (ids,

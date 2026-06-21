@@ -1,4 +1,4 @@
-// Neuro-Cybernetic Protocol (NCP) v0.3 — protobuf IDL. THE NORMATIVE WIRE CONTRACT.
+// Neuro-Cybernetic Protocol (NCP) v0.4 — protobuf IDL. THE NORMATIVE WIRE CONTRACT.
 //
 // proto-native: this `.proto` is the single source of truth for the NCP wire —
 // message structure, field numbers, types, and the binary encoding. Every other
@@ -24,7 +24,7 @@
 //
 // Wire conventions:
 //   - every message carries a `kind` string discriminator and an `ncp_version`
-//     string ("0.3"); receivers check the FULL `ncp_version` — pre-1.0 the minor
+//     string ("0.4"); receivers check the FULL `ncp_version` — pre-1.0 the minor
 //     is breaking, so an exact (major, minor) match is required and any 0.x minor
 //     difference is fail-closed rejected (never coerced),
 //   - integer fields (ids, sizes, seq, seed) are int64, matching the Rust `i64`
@@ -50,7 +50,7 @@
 
 syntax = "proto3";
 
-package engram.ncp.v0;
+package ncp.v0;
 
 // ───────────────────────── primitives ─────────────────────────
 
@@ -79,9 +79,9 @@ enum StimulusKind {
 
 enum NetworkRefKind {
   NETWORK_REF_KIND_UNSPECIFIED = 0;
-  HANDLE = 1;     // wire string "handle" — backend-issued pynest_script_id / compiled_module_id
-  BUILTIN = 2;    // wire string "builtin" — NEST built-in neuron model name
-  MODEL_ID = 3;   // wire string "model_id" — Engram KG / paper-derived model id
+  HANDLE = 1;     // wire string "handle" — backend-issued compiled-module / script id
+  BUILTIN = 2;    // wire string "builtin" — backend built-in model name
+  MODEL_ID = 3;   // wire string "model_id" — backend knowledge-graph / paper-derived model id
   SPEC = 4;       // wire string "spec"
 }
 
@@ -396,8 +396,8 @@ service NeuroSim {
   // Stream observations as a session advances under a stimulus schedule.
   rpc Observe(StepRequest) returns (stream ObservationFrame);
 
-  // Closed-loop control: the plant streams sensor frames; Engram streams back
-  // command frames. (Engram emits NCP commands; the project's own adapter maps
-  // them to its actuators — keeping project specifics out of Engram core.)
+  // Closed-loop control: the plant streams sensor frames; the commander streams
+  // back command frames. (The commander emits NCP commands; the project's own
+  // adapter maps them to its actuators — keeping project specifics out of the core.)
   rpc Control(stream SensorFrame) returns (stream CommandFrame);
 }

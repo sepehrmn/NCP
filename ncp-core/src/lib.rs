@@ -54,7 +54,7 @@ mod wire_tests {
     #[test]
     fn step_request_roundtrip_from_python_json() {
         let json = r#"{
-            "ncp_version": "0.3",
+            "ncp_version": "0.4",
             "kind": "step_request",
             "session_id": "s1",
             "advance_ms": 50.0,
@@ -93,9 +93,10 @@ mod wire_tests {
 
     #[test]
     fn version_guard() {
-        // Wire is pre-1.0 (0.3), so the minor is breaking: an exact (major,
+        // Wire is pre-1.0 (0.4), so the minor is breaking: an exact (major,
         // minor) match is required and a same-major/different-minor is rejected.
-        assert!(check_version("0.3", true).unwrap()); // exact match ok
+        assert!(check_version("0.4", true).unwrap()); // exact match ok
+        assert!(check_version("0.3", true).is_err()); // old 0.3 wire is now a breaking minor diff -> Err under strict
         assert!(check_version("0.2", true).is_err()); // old 0.2 wire is now a breaking minor diff -> Err under strict
         assert!(check_version("0.1", true).is_err()); // old 0.1 wire is now a breaking minor diff -> Err under strict
         assert!(!check_version("0.1", false).unwrap()); // ...and Ok(false) when lenient

@@ -14,7 +14,7 @@
  * `Send`).
  */
 /** The protocol version this client stamps on every request (`ncp_version`). */
-export const NCP_VERSION = '0.3';
+export const NCP_VERSION = '0.4';
 function unwrap(reply) {
     if (reply && typeof reply === 'object' && reply.kind === 'error') {
         throw new Error(`NCP error: ${reply.error}`);

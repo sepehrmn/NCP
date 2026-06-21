@@ -40,7 +40,7 @@
   "description": "Controller -> plant: the proposed actuation.\n\n``horizon`` carries packetized-predictive-control future setpoints (``channels``\nis tick 0; ``horizon[i]`` is tick i+1, ``horizon_dt_ms`` apart) so the actuator\ncan replay through dropouts, bounded by ``ttl_ms`` (see ``ncp-core``\n``ActionBuffer`` / ``RESILIENCE.md``). Empty ``horizon`` = legacy single-step.",
   "properties": {
     "ncp_version": {
-      "default": "0.3",
+      "default": "0.4",
       "title": "Ncp Version",
       "type": "string"
     },

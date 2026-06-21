@@ -81,7 +81,7 @@
   },
   "properties": {
     "ncp_version": {
-      "default": "0.3",
+      "default": "0.4",
       "title": "Ncp Version",
       "type": "string"
     },

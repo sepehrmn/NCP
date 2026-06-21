@@ -2,7 +2,7 @@
   "description": "Link-health telemetry from the seq-gap / CUSUM monitor (control plane).\n``burst=True`` flags sustained loss (a possible jam) \u2014 fail safe, do not just\nadd redundancy. See ``ncp-core`` ``LinkMonitor`` / ``RESILIENCE.md``.",
   "properties": {
     "ncp_version": {
-      "default": "0.3",
+      "default": "0.4",
       "title": "Ncp Version",
       "type": "string"
     },

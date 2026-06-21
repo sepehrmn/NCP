@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-06-21
+
+**Decoupling + robustness release (wire `0.3` → `0.4`).** Batches the structural fixes
+into ONE bump (no more dribble): a consumer-neutral protocol identity, a contract
+handshake that no longer breaks version-compatible flows, and a versioning policy where
+additive evolution is non-breaking. A `0.3` peer is fail-closed rejected on version; all
+consumers re-pin to `tag = v0.4.0` **once**, and future additive changes need no re-pin.
+
+### Changed (breaking: wire `0.3` → `0.4`)
+
+- **Protocol-identity decoupling.** The proto `package` is renamed
+  `engram.ncp.v0 → ncp.v0` — the normative contract names *itself*, not a consumer.
+  This is **wire-neutral** (NCP's JSON wire uses `kind` discriminators and `ncp-core`
+  hand-written serde, not the prost package) and now **hash-neutral**: `canonical_proto`
+  was refactored to hash only the *wire-semantic* content (message/field/enum), dropping
+  the non-wire `syntax`/`package`/`import`/`option` lines, so naming changes no longer
+  move `CONTRACT_HASH`. (The deployment *realm* `engram/ncp` is unchanged — it names the
+  deployment, not the protocol, and is the live `engram↔crebain`/`pid_vla` rendezvous.)
+- **The contract handshake is now ADVISORY, not fail-closed.** `negotiate` gates on
+  `ncp_version` (hard compatibility) and returns a `ContractStatus` (`Match` /
+  `NotAdvertised` / `Mismatch`); a hash mismatch is **logged, not rejected**, so a
+  version-compatible flow keeps working when a peer is on a newer contract revision
+  (e.g. it added an optional field). A `verify_contract` strict opt-in remains for
+  deployments that mandate an exact revision. Server (engram `SessionService.handle`)
+  and client (`ncp-zenoh::open`) both log the advisory instead of failing.
+- **Additive evolution is non-breaking (versioning policy).** Adding an optional field
+  or new message type no longer bumps the minor (protobuf/serde ignore unknown fields);
+  the minor bumps only for genuinely incompatible changes. This corrects the
+  over-aggressive rule that forced the `v0.2.5/6/7/8` and `0.2→0.3` re-pins. `VERSIONING.md`
+  rewritten accordingly; `ncp_version` is the compatibility gate, `CONTRACT_HASH` the
+  advisory identity signal. `CONTRACT_HASH` = `2cf0763ad61e4f1c`.
+- Engram (`backend/neurocontrol`) mirrors all of the above: semantic `canonical_proto`,
+  advisory `contract_advisory`/`negotiate`, `NCP_VERSION` `0.4`. Proto enum/role comments
+  de-named from NEST/Engram specifics to neutral "backend"/"commander" wording.
+
 ### Added
 
 - **Proto-first, NCP-owned JSON-Schema generation (`gen-schemas`).** A new

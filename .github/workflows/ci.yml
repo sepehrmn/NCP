@@ -90,17 +90,16 @@ jobs:
       - name: buf lint
         run: buf lint
       # Gate the JSON + binary wire against the FIRST tag of the current wire
-      # version (v0.3.0, the wire-0.3 baseline). A WIRE/WIRE_JSON-breaking change
+      # version (v0.4.0, the wire-0.4 baseline). A WIRE/WIRE_JSON-breaking change
       # fails here and must bump the version (see VERSIONING.md).
       # IMPORTANT: do NOT bump this baseline on a patch/minor-doc release — the
-      # whole v0.3.x lineage is checked against the wire-0.3 origin, so a break
-      # introduced anywhere in 0.3.x is still caught. Move it ONLY when cutting a
-      # new wire (e.g. to v0.4.0, the first tag of wire 0.4). It moved from v0.2.0
-      # at the wire 0.2 → 0.3 bump (the contract-hash handshake field).
-      - name: buf breaking (vs v0.3.0)
+      # whole v0.4.x lineage is checked against the wire-0.4 origin, so a break
+      # introduced anywhere in 0.4.x is still caught. Move it ONLY when cutting a
+      # new wire (e.g. to v0.5.0, the first tag of wire 0.5). 
+      - name: buf breaking (vs v0.4.0)
         uses: bufbuild/buf-breaking-action@v1
         with:
-          against: "https://github.com/sepahead/NCP.git#tag=v0.3.0,subdir=."
+          against: "https://github.com/sepahead/NCP.git#tag=v0.4.0,subdir=."
 
   ts-dist:
     name: ts dist up-to-date

@@ -295,7 +295,7 @@
   },
   "properties": {
     "ncp_version": {
-      "default": "0.3",
+      "default": "0.4",
       "title": "Ncp Version",
       "type": "string"
     },
@@ -337,7 +337,7 @@
           "type": "null"
         }
       ],
-      "default": "3e639fb1aa20e530",
+      "default": "2cf0763ad61e4f1c",
       "title": "Contract Hash"
     }
   },
