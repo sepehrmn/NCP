@@ -1,0 +1,231 @@
+{
+  "contract_hash": "24e8e6e31e1dec8a",
+  "enums": {
+    "ChannelKind": [
+      "array",
+      "quat",
+      "scalar",
+      "vec3"
+    ],
+    "EntityRole": [
+      "actor",
+      "actuator",
+      "sensor",
+      "system"
+    ],
+    "Mode": [
+      "active",
+      "estop",
+      "hold",
+      "init"
+    ],
+    "NetworkRefKind": [
+      "builtin",
+      "handle",
+      "model_id",
+      "spec"
+    ],
+    "Observable": [
+      "V_m",
+      "binary_state",
+      "rate",
+      "spikes",
+      "weight"
+    ],
+    "Role": [
+      "controller",
+      "plant"
+    ],
+    "SimMode": [
+      "batch",
+      "stream"
+    ],
+    "StimulusKind": [
+      "current_pA",
+      "rate_hz",
+      "rate_inject",
+      "spike_times",
+      "weight_set"
+    ]
+  },
+  "kinds": {
+    "capabilities": {
+      "fields": {
+        "codec_id": "{\"type\": [\"string\", \"null\"]}",
+        "command_channels": "{\"items\": {\"$ref\": \"#/$defs/ChannelSpec\"}, \"type\": \"array\"}",
+        "control_rate_hz": "{\"format\": \"double\", \"type\": \"number\"}",
+        "controller_id": "{\"type\": \"string\"}",
+        "kind": "{\"const\": \"capabilities\", \"type\": \"string\"}",
+        "ncp_version": "{\"type\": \"string\"}",
+        "role": "{\"$ref\": \"#/$defs/Role\"}",
+        "safety": "{\"$ref\": \"#/$defs/SafetyLimits\"}",
+        "sensor_channels": "{\"items\": {\"$ref\": \"#/$defs/ChannelSpec\"}, \"type\": \"array\"}"
+      },
+      "required": [
+        "controller_id"
+      ]
+    },
+    "close_session": {
+      "fields": {
+        "kind": "{\"const\": \"close_session\", \"type\": \"string\"}",
+        "ncp_version": "{\"type\": \"string\"}",
+        "session_id": "{\"type\": \"string\"}"
+      },
+      "required": [
+        "session_id"
+      ]
+    },
+    "command_frame": {
+      "fields": {
+        "channels": "{\"additionalProperties\": {\"$ref\": \"#/$defs/ChannelValue\"}, \"type\": \"object\"}",
+        "frame_id": "{\"type\": \"string\"}",
+        "horizon": "{\"items\": {\"additionalProperties\": {\"$ref\": \"#/$defs/ChannelValue\"}, \"type\": \"object\"}, \"type\": \"array\"}",
+        "horizon_dt_ms": "{\"format\": \"double\", \"type\": [\"number\", \"null\"]}",
+        "kind": "{\"const\": \"command_frame\", \"type\": \"string\"}",
+        "mode": "{\"$ref\": \"#/$defs/Mode\"}",
+        "ncp_version": "{\"type\": \"string\"}",
+        "seq": "{\"format\": \"int64\", \"type\": \"integer\"}",
+        "t": "{\"format\": \"double\", \"type\": \"number\"}",
+        "ttl_ms": "{\"format\": \"double\", \"type\": \"number\"}"
+      },
+      "required": []
+    },
+    "control_status": {
+      "fields": {
+        "kind": "{\"const\": \"control_status\", \"type\": \"string\"}",
+        "loop_latency_ms": "{\"format\": \"double\", \"type\": \"number\"}",
+        "mode": "{\"$ref\": \"#/$defs/Mode\"}",
+        "ncp_version": "{\"type\": \"string\"}",
+        "note": "{\"type\": [\"string\", \"null\"]}",
+        "safety_ok": "{\"type\": \"boolean\"}",
+        "seq": "{\"format\": \"int64\", \"type\": \"integer\"}",
+        "sim_time_ms": "{\"format\": \"double\", \"type\": \"number\"}",
+        "t": "{\"format\": \"double\", \"type\": \"number\"}"
+      },
+      "required": []
+    },
+    "link_status": {
+      "fields": {
+        "burst": "{\"type\": \"boolean\"}",
+        "kind": "{\"const\": \"link_status\", \"type\": \"string\"}",
+        "last_seq": "{\"format\": \"int64\", \"type\": \"integer\"}",
+        "loss_rate": "{\"format\": \"double\", \"type\": \"number\"}",
+        "lost": "{\"format\": \"int64\", \"type\": \"integer\"}",
+        "ncp_version": "{\"type\": \"string\"}",
+        "received": "{\"format\": \"int64\", \"type\": \"integer\"}",
+        "session_id": "{\"type\": \"string\"}",
+        "t": "{\"format\": \"double\", \"type\": \"number\"}"
+      },
+      "required": []
+    },
+    "observation_frame": {
+      "fields": {
+        "calibrated_posterior": "{\"type\": \"boolean\"}",
+        "is_simulation_output": "{\"type\": \"boolean\"}",
+        "kind": "{\"const\": \"observation_frame\", \"type\": \"string\"}",
+        "ncp_version": "{\"type\": \"string\"}",
+        "records": "{\"additionalProperties\": {\"$ref\": \"#/$defs/Observation\"}, \"type\": \"object\"}",
+        "seq": "{\"format\": \"int64\", \"type\": \"integer\"}",
+        "session_id": "{\"type\": \"string\"}",
+        "sim_time_ms": "{\"format\": \"double\", \"type\": \"number\"}",
+        "t": "{\"format\": \"double\", \"type\": \"number\"}"
+      },
+      "required": [
+        "session_id"
+      ]
+    },
+    "open_session": {
+      "fields": {
+        "bindings": "{\"items\": {\"$ref\": \"#/$defs/EntityBinding\"}, \"type\": \"array\"}",
+        "contract_hash": "{\"type\": [\"string\", \"null\"]}",
+        "kind": "{\"const\": \"open_session\", \"type\": \"string\"}",
+        "ncp_version": "{\"type\": \"string\"}",
+        "network": "{\"$ref\": \"#/$defs/NetworkRef\"}",
+        "record": "{\"$ref\": \"#/$defs/RecordSpec\"}",
+        "session_id": "{\"type\": \"string\"}",
+        "sim": "{\"$ref\": \"#/$defs/SimConfig\"}",
+        "stimulus": "{\"$ref\": \"#/$defs/StimulusSpec\"}"
+      },
+      "required": [
+        "network",
+        "session_id"
+      ]
+    },
+    "run_request": {
+      "fields": {
+        "duration_ms": "{\"format\": \"double\", \"type\": \"number\"}",
+        "kind": "{\"const\": \"run_request\", \"type\": \"string\"}",
+        "ncp_version": "{\"type\": \"string\"}",
+        "session_id": "{\"type\": \"string\"}",
+        "stimulus": "{\"anyOf\": [{\"$ref\": \"#/$defs/StimulusFrame\"}, {\"type\": \"null\"}]}"
+      },
+      "required": [
+        "duration_ms",
+        "session_id"
+      ]
+    },
+    "sensor_frame": {
+      "fields": {
+        "channels": "{\"additionalProperties\": {\"$ref\": \"#/$defs/ChannelValue\"}, \"type\": \"object\"}",
+        "frame_id": "{\"type\": \"string\"}",
+        "kind": "{\"const\": \"sensor_frame\", \"type\": \"string\"}",
+        "ncp_version": "{\"type\": \"string\"}",
+        "seq": "{\"format\": \"int64\", \"type\": \"integer\"}",
+        "t": "{\"format\": \"double\", \"type\": \"number\"}"
+      },
+      "required": []
+    },
+    "session_closed": {
+      "fields": {
+        "kind": "{\"const\": \"session_closed\", \"type\": \"string\"}",
+        "ncp_version": "{\"type\": \"string\"}",
+        "ok": "{\"type\": \"boolean\"}",
+        "session_id": "{\"type\": \"string\"}"
+      },
+      "required": [
+        "session_id"
+      ]
+    },
+    "session_opened": {
+      "fields": {
+        "backend": "{\"type\": \"string\"}",
+        "contract_hash": "{\"type\": [\"string\", \"null\"]}",
+        "error": "{\"type\": [\"string\", \"null\"]}",
+        "kind": "{\"const\": \"session_opened\", \"type\": \"string\"}",
+        "ncp_version": "{\"type\": \"string\"}",
+        "ok": "{\"type\": \"boolean\"}",
+        "provenance": "{\"anyOf\": [{\"$ref\": \"#/$defs/SimProvenance\"}, {\"type\": \"null\"}]}",
+        "resolved": "{\"additionalProperties\": {\"format\": \"int64\", \"type\": \"integer\"}, \"type\": \"object\"}",
+        "session_id": "{\"type\": \"string\"}"
+      },
+      "required": [
+        "session_id"
+      ]
+    },
+    "step_request": {
+      "fields": {
+        "advance_ms": "{\"format\": \"double\", \"type\": [\"number\", \"null\"]}",
+        "kind": "{\"const\": \"step_request\", \"type\": \"string\"}",
+        "ncp_version": "{\"type\": \"string\"}",
+        "session_id": "{\"type\": \"string\"}",
+        "stimulus": "{\"anyOf\": [{\"$ref\": \"#/$defs/StimulusFrame\"}, {\"type\": \"null\"}]}"
+      },
+      "required": [
+        "session_id"
+      ]
+    },
+    "stimulus_frame": {
+      "fields": {
+        "kind": "{\"const\": \"stimulus_frame\", \"type\": \"string\"}",
+        "ncp_version": "{\"type\": \"string\"}",
+        "session_id": "{\"type\": \"string\"}",
+        "t": "{\"format\": \"double\", \"type\": \"number\"}",
+        "values": "{\"additionalProperties\": {\"$ref\": \"#/$defs/ChannelValue\"}, \"type\": \"object\"}"
+      },
+      "required": [
+        "session_id"
+      ]
+    }
+  },
+  "ncp_version": "0.5"
+}

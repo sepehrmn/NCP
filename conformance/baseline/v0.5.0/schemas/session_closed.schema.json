@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "kind": {
+      "const": "session_closed",
+      "default": "session_closed",
+      "type": "string"
+    },
+    "ncp_version": {
+      "default": "0.5",
+      "type": "string"
+    },
+    "ok": {
+      "default": true,
+      "type": "boolean"
+    },
+    "session_id": {
+      "default": "",
+      "type": "string"
+    }
+  },
+  "required": [
+    "session_id"
+  ],
+  "title": "SessionClosed",
+  "type": "object"
+}

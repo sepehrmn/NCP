@@ -1,0 +1,59 @@
+{
+  "$defs": {
+    "ChannelValue": {
+      "description": "A channel sample: a flat list of floats plus an optional unit string. Width\ncarries the semantics (1=scalar, 3=vec3, 4=quat, N=array).",
+      "properties": {
+        "data": {
+          "default": [],
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "type": "array"
+        },
+        "unit": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "The values to inject this step (keyed by stimulus port).",
+  "properties": {
+    "kind": {
+      "const": "stimulus_frame",
+      "default": "stimulus_frame",
+      "type": "string"
+    },
+    "ncp_version": {
+      "default": "0.5",
+      "type": "string"
+    },
+    "session_id": {
+      "default": "",
+      "type": "string"
+    },
+    "t": {
+      "default": 0.0,
+      "format": "double",
+      "type": "number"
+    },
+    "values": {
+      "additionalProperties": {
+        "$ref": "#/$defs/ChannelValue"
+      },
+      "default": {},
+      "type": "object"
+    }
+  },
+  "required": [
+    "session_id"
+  ],
+  "title": "StimulusFrame",
+  "type": "object"
+}

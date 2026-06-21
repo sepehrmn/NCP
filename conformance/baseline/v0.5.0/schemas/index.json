@@ -1,0 +1,19 @@
+{
+  "messages": [
+    "capabilities",
+    "close_session",
+    "command_frame",
+    "control_status",
+    "link_status",
+    "observation_frame",
+    "open_session",
+    "run_request",
+    "sensor_frame",
+    "session_closed",
+    "session_opened",
+    "step_request",
+    "stimulus_frame"
+  ],
+  "ncp_version": "0.5",
+  "note": "Generated from the ncp-core serde reference types (cargo run --features schema --bin gen-schemas); do not edit by hand."
+}

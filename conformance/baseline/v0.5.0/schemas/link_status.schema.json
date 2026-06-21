@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Link-health telemetry from the seq-gap / CUSUM monitor (published on the\ncontrol plane). `burst=true` flags sustained loss — a possible jam — at which\npoint the only sound response is to fail safe, not add redundancy.",
+  "properties": {
+    "burst": {
+      "default": false,
+      "type": "boolean"
+    },
+    "kind": {
+      "const": "link_status",
+      "default": "link_status",
+      "type": "string"
+    },
+    "last_seq": {
+      "default": -1,
+      "format": "int64",
+      "type": "integer"
+    },
+    "loss_rate": {
+      "default": 0.0,
+      "format": "double",
+      "type": "number"
+    },
+    "lost": {
+      "default": 0,
+      "format": "int64",
+      "type": "integer"
+    },
+    "ncp_version": {
+      "default": "0.5",
+      "type": "string"
+    },
+    "received": {
+      "default": 0,
+      "format": "int64",
+      "type": "integer"
+    },
+    "session_id": {
+      "default": "",
+      "type": "string"
+    },
+    "t": {
+      "default": 0.0,
+      "format": "double",
+      "type": "number"
+    }
+  },
+  "required": [],
+  "title": "LinkStatus",
+  "type": "object"
+}

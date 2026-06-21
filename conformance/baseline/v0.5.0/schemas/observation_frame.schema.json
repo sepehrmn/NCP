@@ -1,0 +1,133 @@
+{
+  "$defs": {
+    "Observable": {
+      "description": "What to record off a population/neuron/synapse.",
+      "oneOf": [
+        {
+          "enum": [
+            "spikes",
+            "V_m",
+            "rate",
+            "weight"
+          ],
+          "type": "string"
+        },
+        {
+          "const": "binary_state",
+          "description": "Binary / multi-state neurons: discrete state via spin_detector, not V_m. (#10)",
+          "type": "string"
+        }
+      ]
+    },
+    "Observation": {
+      "description": "Recorded data for one record port. `times`+`values` are parallel for analog;\n`times`+`senders` are parallel for spikes.",
+      "properties": {
+        "observable": {
+          "$ref": "#/$defs/Observable",
+          "default": "V_m"
+        },
+        "port": {
+          "default": "",
+          "type": "string"
+        },
+        "recordable": {
+          "default": null,
+          "description": "Which named recordable this series carries (e.g. `g_ex`, `w`) when a port\nrecords more than the primary `observable`; `None` = the `observable`. (#10)",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "senders": {
+          "default": [],
+          "items": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "target": {
+          "default": "",
+          "type": "string"
+        },
+        "times": {
+          "default": [],
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "type": "array"
+        },
+        "unit": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "values": {
+          "default": [],
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "The returned neural data, keyed by record port.",
+  "properties": {
+    "calibrated_posterior": {
+      "default": false,
+      "type": "boolean"
+    },
+    "is_simulation_output": {
+      "default": true,
+      "type": "boolean"
+    },
+    "kind": {
+      "const": "observation_frame",
+      "default": "observation_frame",
+      "type": "string"
+    },
+    "ncp_version": {
+      "default": "0.5",
+      "type": "string"
+    },
+    "records": {
+      "additionalProperties": {
+        "$ref": "#/$defs/Observation"
+      },
+      "default": {},
+      "type": "object"
+    },
+    "seq": {
+      "default": 0,
+      "description": "Echoes the driving `SensorFrame.seq` when published inside a closed loop,\nso a split-plane observer can align `(V,L,D,A)` on `seq` (not arrival\ntime). `0` in the pure pull/sim-service path (no controller seq).",
+      "format": "int64",
+      "type": "integer"
+    },
+    "session_id": {
+      "default": "",
+      "type": "string"
+    },
+    "sim_time_ms": {
+      "default": 0.0,
+      "format": "double",
+      "type": "number"
+    },
+    "t": {
+      "default": 0.0,
+      "format": "double",
+      "type": "number"
+    }
+  },
+  "required": [
+    "session_id"
+  ],
+  "title": "ObservationFrame",
+  "type": "object"
+}

@@ -1,0 +1,109 @@
+{
+  "$defs": {
+    "SimProvenance": {
+      "description": "Scientific-boundary discriminators carried on every opened session. Returned\ndata is a **raw simulation output of a specified model**, never a validated\nreproduction: `calibrated_posterior=false`, `is_simulation_output=true`.",
+      "properties": {
+        "advisory_only": {
+          "default": true,
+          "type": "boolean"
+        },
+        "backend": {
+          "default": "",
+          "type": "string"
+        },
+        "calibrated_posterior": {
+          "default": false,
+          "type": "boolean"
+        },
+        "is_simulation_output": {
+          "default": true,
+          "type": "boolean"
+        },
+        "network_ref": {
+          "default": "",
+          "type": "string"
+        },
+        "note": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "seed": {
+          "default": null,
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Ack of `open_session` with resolved sizes and provenance.",
+  "properties": {
+    "backend": {
+      "default": "mock",
+      "type": "string"
+    },
+    "contract_hash": {
+      "default": "24e8e6e31e1dec8a",
+      "description": "Server's [`CONTRACT_HASH`] — the reply half of the handshake (see\n[`OpenSession::contract_hash`]). A client treats a hash difference as an\n**advisory** ([`ContractStatus::Mismatch`], logged not rejected); the version\nis the hard gate. `None` (serialized `null`) = not advertised.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "error": {
+      "default": null,
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "kind": {
+      "const": "session_opened",
+      "default": "session_opened",
+      "type": "string"
+    },
+    "ncp_version": {
+      "default": "0.5",
+      "type": "string"
+    },
+    "ok": {
+      "default": true,
+      "type": "boolean"
+    },
+    "provenance": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/SimProvenance"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "resolved": {
+      "additionalProperties": {
+        "format": "int64",
+        "type": "integer"
+      },
+      "default": {},
+      "type": "object"
+    },
+    "session_id": {
+      "default": "",
+      "type": "string"
+    }
+  },
+  "required": [
+    "session_id"
+  ],
+  "title": "SessionOpened",
+  "type": "object"
+}

@@ -1,0 +1,65 @@
+{
+  "$defs": {
+    "Mode": {
+      "description": "Controller mode (the safety-critical action authority lives here).",
+      "enum": [
+        "init",
+        "active",
+        "hold",
+        "estop"
+      ],
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Controller → plant / telemetry: loop health and mode.",
+  "properties": {
+    "kind": {
+      "const": "control_status",
+      "default": "control_status",
+      "type": "string"
+    },
+    "loop_latency_ms": {
+      "default": 0.0,
+      "format": "double",
+      "type": "number"
+    },
+    "mode": {
+      "$ref": "#/$defs/Mode",
+      "default": "init"
+    },
+    "ncp_version": {
+      "default": "0.5",
+      "type": "string"
+    },
+    "note": {
+      "default": null,
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "safety_ok": {
+      "default": true,
+      "type": "boolean"
+    },
+    "seq": {
+      "default": 0,
+      "format": "int64",
+      "type": "integer"
+    },
+    "sim_time_ms": {
+      "default": 0.0,
+      "format": "double",
+      "type": "number"
+    },
+    "t": {
+      "default": 0.0,
+      "format": "double",
+      "type": "number"
+    }
+  },
+  "required": [],
+  "title": "ControlStatus",
+  "type": "object"
+}

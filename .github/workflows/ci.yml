@@ -69,6 +69,13 @@ jobs:
       - name: Conformance vectors
         run: python3 scripts/check_conformance_vectors.py
 
+      # Frozen JSON-wire baseline: extends buf's proto-only guarantee to the whole
+      # serde/Pydantic JSON wire — the CURRENT schemas must be ADDITIVELY compatible
+      # with the snapshot frozen at conformance/baseline/v<wire>.0 (no removed field /
+      # enum value, no field made required, no type change within a wire version).
+      - name: Frozen JSON-wire baseline (additive-only)
+        run: python3 scripts/check_wire_baseline.py
+
       # Behavioral conformance: the same decision corpus the Rust reference is
       # pinned to (ncp-core/tests/behavior_conformance.rs, run by the cargo test
       # step above) replayed through the Python binding. In THIS job the binding is

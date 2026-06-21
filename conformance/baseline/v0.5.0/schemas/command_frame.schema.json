@@ -1,0 +1,100 @@
+{
+  "$defs": {
+    "ChannelValue": {
+      "description": "A channel sample: a flat list of floats plus an optional unit string. Width\ncarries the semantics (1=scalar, 3=vec3, 4=quat, N=array).",
+      "properties": {
+        "data": {
+          "default": [],
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "type": "array"
+        },
+        "unit": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "Mode": {
+      "description": "Controller mode (the safety-critical action authority lives here).",
+      "enum": [
+        "init",
+        "active",
+        "hold",
+        "estop"
+      ],
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Controller → plant: the proposed actuation, with `mode`/`ttl_ms` safety\nmetadata. `seq` should echo the originating `SensorFrame.seq`.",
+  "properties": {
+    "channels": {
+      "additionalProperties": {
+        "$ref": "#/$defs/ChannelValue"
+      },
+      "default": {},
+      "type": "object"
+    },
+    "frame_id": {
+      "default": "world",
+      "type": "string"
+    },
+    "horizon": {
+      "default": [],
+      "description": "Packetized predictive control: future setpoints. `channels` is tick 0;\n`horizon[i]` applies at tick i+1, spaced `horizon_dt_ms` apart. The\nactuator replays these through dropouts (see `ActionBuffer`), bounded by\n`ttl_ms`. Empty = legacy single-step command. Backward compatible: a\nconsumer that ignores `horizon` still reads `channels` (tick 0).",
+      "items": {
+        "additionalProperties": {
+          "$ref": "#/$defs/ChannelValue"
+        },
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "horizon_dt_ms": {
+      "default": null,
+      "format": "double",
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "kind": {
+      "const": "command_frame",
+      "default": "command_frame",
+      "type": "string"
+    },
+    "mode": {
+      "$ref": "#/$defs/Mode",
+      "default": "hold"
+    },
+    "ncp_version": {
+      "default": "0.5",
+      "type": "string"
+    },
+    "seq": {
+      "default": 0,
+      "format": "int64",
+      "type": "integer"
+    },
+    "t": {
+      "default": 0.0,
+      "format": "double",
+      "type": "number"
+    },
+    "ttl_ms": {
+      "default": 200.0,
+      "format": "double",
+      "type": "number"
+    }
+  },
+  "required": [],
+  "title": "CommandFrame",
+  "type": "object"
+}

@@ -34,6 +34,9 @@ python3 scripts/check_proto_schema_parity.py
 step "conformance corpus (golden JSON+binary vectors vs schemas; coverage gate)"
 python3 scripts/check_conformance_vectors.py
 
+step "frozen JSON-wire baseline (additive-only diff vs the tagged wire baseline)"
+python3 scripts/check_wire_baseline.py
+
 step "behavioral conformance corpus (decision vectors vs the ncp binding; skips if unbuilt)"
 python3 scripts/check_behavior_vectors.py
 

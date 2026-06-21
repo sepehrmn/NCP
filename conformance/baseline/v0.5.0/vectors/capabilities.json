@@ -1,0 +1,33 @@
+{
+  "ncp_version": "0.5",
+  "kind": "capabilities",
+  "controller_id": "pid-controller-1",
+  "role": "controller",
+  "control_rate_hz": 50.0,
+  "sensor_channels": [
+    {
+      "name": "pose_error",
+      "kind": "vec3",
+      "unit": "m",
+      "size": 3,
+      "optional": false,
+      "description": "position error in world frame"
+    }
+  ],
+  "command_channels": [
+    {
+      "name": "velocity_setpoint",
+      "kind": "vec3",
+      "unit": "m/s",
+      "size": 3,
+      "optional": false
+    }
+  ],
+  "codec_id": null,
+  "safety": {
+    "max_speed_mps": 2.0,
+    "max_tilt_rad": 0.5,
+    "geofence_radius_m": 10.0,
+    "command_timeout_ms": 200.0
+  }
+}

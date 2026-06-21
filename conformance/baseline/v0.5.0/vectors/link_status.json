@@ -1,0 +1,11 @@
+{
+  "ncp_version": "0.5",
+  "kind": "link_status",
+  "session_id": "vec-open-1",
+  "t": 1.0,
+  "last_seq": 42,
+  "received": 40,
+  "lost": 2,
+  "loss_rate": 0.05,
+  "burst": false
+}

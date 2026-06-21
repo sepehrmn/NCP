@@ -1,0 +1,21 @@
+{
+  "ncp_version": "0.5",
+  "kind": "session_opened",
+  "session_id": "vec-open-1",
+  "ok": true,
+  "backend": "rapier3d",
+  "resolved": {
+    "feat": 4
+  },
+  "provenance": {
+    "network_ref": "iaf_cond_exp",
+    "backend": "rapier3d",
+    "seed": 12345,
+    "calibrated_posterior": false,
+    "is_simulation_output": true,
+    "advisory_only": true,
+    "note": null
+  },
+  "error": null,
+  "contract_hash": "24e8e6e31e1dec8a"
+}

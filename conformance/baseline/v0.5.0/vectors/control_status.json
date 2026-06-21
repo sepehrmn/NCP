@@ -1,0 +1,11 @@
+{
+  "ncp_version": "0.5",
+  "kind": "control_status",
+  "seq": 7,
+  "t": 1.0,
+  "mode": "active",
+  "sim_time_ms": 10.0,
+  "loop_latency_ms": 1.5,
+  "safety_ok": true,
+  "note": null
+}
