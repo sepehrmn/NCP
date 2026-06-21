@@ -20,7 +20,7 @@ paper-reproduction claim, and the provenance discriminators are mandatory and
 fail-closed precisely to keep that boundary machine-checkable. It is a single
 reference SDK (proto-native — `proto/ncp.proto` normative, `ncp-core` the Rust
 reference implementation; Python via PyO3, TypeScript types via ts-rs, a C ABI for
-C/C++) with field-set-parity drift guards, not yet a multi-implementation program. It is **pre-1.0** (current wire `0.4` — `v0.4.0` is the decoupling+robustness release (consumer-neutral proto package, advisory contract handshake, additive-is-non-breaking); earlier wires: `0.3` added the contract-hash field, `0.2` the neuron-family + bulk codec): the wire
+C/C++) with field-set-parity drift guards, not yet a multi-implementation program. It is **pre-1.0** (current wire `0.5` — `v0.5.0` is the stable-wire cut that promoted the command/sim `mode` strings to proto enums (`Mode`/`SimMode`), recomputing `CONTRACT_HASH`; earlier wires: `0.4` the decoupling+robustness release (consumer-neutral proto package, advisory contract handshake, additive-is-non-breaking), `0.3` added the contract-hash field, `0.2` the neuron-family + bulk codec): the wire
 may change, minor versions are treated as breaking, and the version guard fails
 rather than silently coercing. NCP's contribution is a typed, provenance-first, safety-gated wire
 contract — not novel control science and not the first SNN-in-the-loop robot loop

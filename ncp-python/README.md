@@ -29,7 +29,7 @@ maturin develop -m ncp-python/Cargo.toml --features extension-module
 ```python
 import ncp
 
-ncp.NCP_VERSION                      # "0.4"
+ncp.NCP_VERSION                      # "0.5"
 k = ncp.Keys("ncp")                  # the realm is a deployment choice (e.g. "engram/ncp")
 k.command("uav3")                    # "ncp/session/uav3/command"
 ncp.decode_command(codec_json, '{"vel_x":200.0}', t=0.0, seq=7)  # CommandFrame JSON

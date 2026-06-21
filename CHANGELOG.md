@@ -7,6 +7,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-06-21
+
+The stable-wire cut. The deliberate, once-before-adoption breaking change that makes
+`0.5` the baseline a stable wire is measured against, plus the release-readiness
+checklist closed in full.
+
+### Changed
+
+- **BREAKING — the wire is cut `0.4` → `0.5`.** The three bare proto `string mode`
+  fields are promoted to proto enums so `buf breaking` covers their value sets:
+  `SimConfig.mode` → a new `SimMode {stream, batch}`, and `CommandFrame.mode` /
+  `ControlStatus.mode` → the existing `Mode {init, active, hold, estop}`. The Rust
+  serde reference already used these enums; the proto was the laggard. The JSON wire is
+  **unchanged for known values** (serde/Pydantic still emit the lowercase strings) — the
+  `string`→enum protobuf type change is what makes it `buf`-breaking. `NCP_VERSION` is
+  now `0.5`; pre-1.0 the minor is breaking, so a `0.4` peer and a `0.5` peer
+  fail-closed-reject each other (never silently mis-decode).
+- **`CONTRACT_HASH` recomputed: `24e8e6e31e1dec8a`** (was `2cf0763ad61e4f1c`) — the
+  FNV-1a of the new canonical proto. Advisory (a mismatch is logged, not rejected), but
+  it moved because the proto moved; re-pinned in lockstep across `ncp-core`, `ncp-ts`,
+  the behavior corpus, and the binding smoke tests.
+- **Consumers re-pin to `tag = v0.5.0`** once (the downstream half of the wire cut).
+- **sepahead/NCP#5 resolved: keep int64-as-JSON-numbers.** Range-guarded; a second wire
+  break to adopt ProtoJSON int64-as-strings is not worth it. Documented in the proto header.
+
+### Added
+
+- **Safety governor over a real transport** (`ncp-zenoh/tests/safety_governor_over_wire.rs`).
+  The HOLD/ESTOP/clamp authority is now proven across two independent Zenoh sessions over
+  a real tcp link, not just in-process: corpus-driven `govern` verdicts **and the ESTOP
+  latch surviving the wire**. (RELEASE_READINESS blocker #1.)
+- **Frozen JSON-wire baseline gate** (`scripts/check_wire_baseline.py`,
+  `conformance/baseline/v0.5.0/`). Extends `buf`'s proto-only breaking guarantee to the
+  whole serde/Pydantic JSON wire: an additive-only diff (no removed field / enum value,
+  no newly-required field, no type change within a wire version) of the current schemas
+  vs the frozen v0.5.0 snapshot. Wired into `scripts/check.sh` + the CI conformance job.
+  (RELEASE_READINESS blocker #3.)
+- **Single-source wire-version assert + mixed-version e2e.** `NCP_VERSION` and
+  `CONTRACT_HASH` are cross-checked against the behavior corpus header
+  (`behavior_conformance.rs`) and across `{ncp-core, ncp-ts, corpus}`
+  (`check-version-coherence.sh`); a `0.4` peer is proven fail-closed-rejected by a `0.5`
+  server over both the engram cross-process and the Zenoh transports, with the matching
+  `0.5↔0.5` happy path kept. (RELEASE_READINESS should-fix #4.)
+- **Reply-side + nested-unknown forward-compat tolerance** (`ncp-core`; the engram
+  Pydantic peer mirrors it): future fields in replies and in nested messages decode, and
+  the engram enum mirror (`_missing_` → `UNKNOWN`, `Mode` → `HOLD`) completes the
+  cross-language forward-compat the Rust `#[serde(other)] Unknown` started.
+  (RELEASE_READINESS blocker #2 + should-fix #5.)
+
 ### Fixed
 
 - **Unknown enum variants are now forward-compatible (additive-non-breaking).** An

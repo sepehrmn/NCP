@@ -17,13 +17,13 @@ projection) with [SemVer](https://semver.org): `MAJOR.MINOR.PATCH`.
 - **PATCH** — clarifications/docs with no wire effect.
 
 **Wire version vs crate/package version.** The `ncp_version` *wire* string
-(currently `0.4`) versions the contract; the Rust crates and the `@sepehrmn/ncp`
+(currently `0.5`) versions the contract; the Rust crates and the `@sepehrmn/ncp`
 package carry their own SemVer (see `Cargo.toml` / `package.json` for the current
 SDK version — the manifests are the single source of truth) for the SDK. They usually move
-together, but a PATCH that touches only code/docs/build artifacts (e.g. `0.3.0` →
-`0.4.1`) leaves the wire at `0.4`. **Pin `tag = "v0.4.0"`** for the wire baseline
+together, but a PATCH that touches only code/docs/build artifacts (e.g. `0.5.0` →
+`0.5.1`) leaves the wire at `0.5`. **Pin `tag = "v0.5.0"`** for the wire baseline
 (what the `buf breaking` gate compares against); the crate at that-or-later tag is
-wire-`0.4`-compatible.
+wire-`0.5`-compatible.
 
 **Additive evolution is NON-breaking (since v0.4).** Adding an *optional* field or a
 new message type does **not** bump the minor — protobuf/serde ignore unknown fields,
@@ -38,14 +38,27 @@ contract revision" without breaking anyone.
 
 **Pre-1.0 caveat:** while `0.x`, an *incompatible* minor bump is breaking and the
 version guard fails closed on a minor difference (`check_version`). Pin an exact
-version (`tag = "v0.4.0"`). `0.x` is explicitly unstable.
+version (`tag = "v0.5.0"`). `0.x` is explicitly unstable.
 
-The current wire is **`0.4`** (`ncp_version = "0.4"`). `0.4` is the **decoupling +
-robustness** release: the proto `package` was renamed `engram.ncp.v0 → ncp.v0`
-(naming-only — hash-neutral, see below), the contract handshake became **advisory**
-(version is the gate; a hash mismatch is logged, not rejected), and the additive-is-
-non-breaking policy above was adopted. (`0.3` had added the `contract_hash` handshake
-field; `0.2` the neuron-family wire (#10) and bulk column codec (#6).)
+The current wire is **`0.5`** (`ncp_version = "0.5"`). `0.5` is the **stable-wire cut**:
+the three bare proto `string mode` fields were promoted to enums (`SimConfig.mode →
+SimMode {stream, batch}`, `CommandFrame.mode` / `ControlStatus.mode → Mode {init,
+active, hold, estop}`) so the `buf breaking` gate covers their value sets — a real
+`string`→enum wire change that recomputed `CONTRACT_HASH`. Earlier wires: `0.4` was the
+**decoupling + robustness** release (the proto `package` was renamed `engram.ncp.v0 →
+ncp.v0` — naming-only, hash-neutral; the contract handshake became advisory; the
+additive-is-non-breaking policy above was adopted); `0.3` added the `contract_hash`
+handshake field; `0.2` the neuron-family wire (#10) and bulk column codec (#6).
+
+```mermaid
+flowchart TB
+    V4["wire 0.4 — prior baseline (v0.4.0)<br/>SimConfig/CommandFrame/ControlStatus .mode = string<br/>CONTRACT_HASH 2cf0763ad61e4f1c"]
+    V5["wire 0.5 — current baseline (v0.5.0)<br/>.mode promoted to SimMode / Mode enums<br/>CONTRACT_HASH 24e8e6e31e1dec8a (recomputed)"]
+    V4 -->|"BREAKING: string→enum (buf WIRE/WIRE_JSON)"| V5
+    V5 --> H{"handshake: check_version(peer)"}
+    H -->|"peer is 0.4 ≠ 0.5 (exact major.minor)"| REJ["fail-closed: rejected"]
+    H -->|"peer is 0.5"| OK["open · contract_hash diff = ADVISORY (logged)"]
+```
 
 ## Enforcement: `buf breaking`
 
@@ -56,7 +69,7 @@ rules (configured in `buf.yaml`):
 - **`FILE` / `PACKAGE`** — source/codegen-level stability.
 
 CI runs `buf lint`; `buf breaking` gates the wire against the first tag of the
-current wire (`v0.4.0`, the wire-`0.4` baseline — see `.github/workflows/ci.yml`).
+current wire (`v0.5.0`, the wire-`0.5` baseline — see `.github/workflows/ci.yml`).
 A change that trips `WIRE`/`WIRE_JSON` **must** bump MAJOR (or MINOR while `0.x`).
 
 ## Per-session version + contract handshake

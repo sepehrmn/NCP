@@ -87,6 +87,28 @@ goodput collapses toward `R_min`, escalate **HOLD → ESTOP** (the only two `mod
 rungs that exist today; an autonomous-RTL rung would need a new `Mode` variant + a
 MAVROS SET_MODE path that a given robot/UAV client may not yet have — out of scope until built).
 
+The plant-side `SafetyGovernor` state machine (verified against
+`ncp-core/src/safety.rs`) — `ACTIVE` clamps speed and truncates the predictive
+horizon near the geofence; a stale/missing sensor (or NaN clock/velocity, bad
+timeout, absent geofence channel) drops to **non-latching** `HOLD` that self-clears
+on fresh in-bounds data; a geofence breach, NaN position, or sustained link burst
+**latches** `ESTOP` (cleared only by a supervisor `reset()`); a limit referencing an
+undeclared channel is a `config_fail_closed` HOLD that `reset()` does **not** clear:
+
+```mermaid
+stateDiagram-v2
+    [*] --> Active
+    Active --> Active: fresh sensor → clamp speed + truncate horizon near fence
+    Active --> Hold: stale / missing sensor · NaN clock · NaN velocity · bad timeout · geofence channel absent
+    Hold --> Active: fresh, in-bounds data returns (HOLD is non-latching)
+    Active --> Estop: geofence breach · NaN position · link burst
+    Hold --> Estop: geofence breach · link burst
+    Estop --> Estop: latched — every command zeroed
+    Estop --> Active: supervisor reset() then in-bounds
+    Active --> ConfigFailClosed: a limit references an undeclared channel
+    ConfigFailClosed --> ConfigFailClosed: HOLD · safety_ok=false · reset() does NOT clear
+```
+
 **The hard PHY boundary, stated plainly:** no application-layer scheme — not PPC,
 not duplication, not coding — recovers data when a wideband jammer drives delivered
 goodput to ~0 for longer than the PPC horizon. App-layer mitigates *partial/burst*

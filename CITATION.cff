@@ -11,7 +11,9 @@ type: software
 authors:
   - family-names: Mahmoudian
     given-names: Sepehr
-    email: sepmhn@gmail.com
+    email: sepehr.mahmoudian@gmail.com
+    # orcid: 'https://orcid.org/0000-0000-0000-0000'  # add the author ORCID iD for
+    # academic-graph linkage (left out rather than fabricated).
 repository-code: 'https://github.com/sepahead/NCP'
 url: 'https://github.com/sepahead/NCP'
 abstract: >-
@@ -24,9 +26,16 @@ keywords:
   - neurorobotics
   - robotics
   - protocol
+  - wire-protocol
   - nest-simulator
   - zenoh
+  - closed-loop-control
+  - real-time
+  - provenance
+  - pyo3
+  - typescript
 license:
   - MIT
   - Apache-2.0
-version: 0.4.4
+version: 0.5.0
+date-released: '2026-06-21'

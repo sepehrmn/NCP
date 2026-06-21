@@ -76,8 +76,8 @@ One normative wire ([`proto/ncp.proto`](proto/ncp.proto) / [`NEURO_CYBERNETIC_PR
 
 | Peer | Install / depend | Open session · step · observe | Transport(s) |
 |---|---|---|---|
-| **`ncp-core`** (Rust) | `ncp-core = { git = "https://github.com/sepahead/NCP", tag = "v0.4.4" }` | Build `OpenSession` / `CommandFrame`, `serde_json::to_string` → wire — see [`ncp-core/README.md`](ncp-core/README.md) | none (serde-only; in-process bus + control loop) |
-| **`ncp-zenoh`** (Rust transport) | `ncp-zenoh = { git = "https://github.com/sepahead/NCP", tag = "v0.4.4" }` | `let bus = ZenohBus::open().await?; let client = ZenohNcpClient::new(bus); client.open(&msg).await?` — see [`ncp-zenoh/README.md`](ncp-zenoh/README.md) | Zenoh (queryable RPC + per-plane pub/sub) |
+| **`ncp-core`** (Rust) | `ncp-core = { git = "https://github.com/sepahead/NCP", tag = "v0.5.0" }` | Build `OpenSession` / `CommandFrame`, `serde_json::to_string` → wire — see [`ncp-core/README.md`](ncp-core/README.md) | none (serde-only; in-process bus + control loop) |
+| **`ncp-zenoh`** (Rust transport) | `ncp-zenoh = { git = "https://github.com/sepahead/NCP", tag = "v0.5.0" }` | `let bus = ZenohBus::open().await?; let client = ZenohNcpClient::new(bus); client.open(&msg).await?` — see [`ncp-zenoh/README.md`](ncp-zenoh/README.md) | Zenoh (queryable RPC + per-plane pub/sub) |
 | **`ncp-python`** (Python / PyO3) | `maturin develop -m ncp-python/Cargo.toml --features extension-module` | `import ncp; ncp.Keys("ncp").command("uav3"); ncp.decode_command(...)` — see [`ncp-python/README.md`](ncp-python/README.md) | transport-agnostic (JSON wire via `ncp-core`) |
 | **`ncp-cpp`** (C / C++ ABI) | `cargo build -p ncp-cpp` → link `libncp_cpp`, `#include "ncp.h"` | `char *v = ncp_version(); /* ... */ ncp_string_free(v);` — see [`ncp-cpp/README.md`](ncp-cpp/README.md) | transport-agnostic (JSON in/out over the C ABI) |
 | **`ncp-ts`** (`@sepehrmn/ncp`, TypeScript) | `npm install @sepehrmn/ncp` | `const ncp = new NeuroSimClient(transport.send); await ncp.open(...); await ncp.step(...); await ncp.close(...)` — see [`ncp-ts/README.md`](ncp-ts/README.md) | WebSocket (`WebSocketNeuroSim`) or any `Send` bus |
@@ -88,8 +88,8 @@ NCP is **not yet published to crates.io** (pre-1.0). Depend on it as a pinned gi
 
 ```toml
 [dependencies]
-ncp-core  = { git = "https://github.com/sepahead/NCP", tag = "v0.4.4" }
-ncp-zenoh = { git = "https://github.com/sepahead/NCP", tag = "v0.4.4" }  # transport, optional
+ncp-core  = { git = "https://github.com/sepahead/NCP", tag = "v0.5.0" }
+ncp-zenoh = { git = "https://github.com/sepahead/NCP", tag = "v0.5.0" }  # transport, optional
 ```
 
 A minimal, wire-correct snippet using `ncp-core` — build a safety-gated `CommandFrame`, then refuse an incompatible peer version:
@@ -137,13 +137,82 @@ python scripts/bench_overlap.py    # transport/compute overlap (GIL) measurement
 - [`GOVERNANCE.md`](GOVERNANCE.md) — the governance model, the mechanical interop gates, and the path to a neutral home.
 - [`SECURITY.md`](SECURITY.md) — threat model, the disclosed action-plane limitation, and the TLS + ACL enablement steps.
 - [`CONTRIBUTING.md`](CONTRIBUTING.md) — how to build, test, and propose changes.
-- [`CHANGELOG.md`](CHANGELOG.md) — per-release notes (current: `v0.4.4`).
+- [`CHANGELOG.md`](CHANGELOG.md) — per-release notes (current: `v0.5.0`).
+
+## Ecosystem
+
+NCP is the **wire contract only** — it bakes in no consumer. These are the reference
+and example peers that pin it (each re-pins to `tag = v0.5.0`); your own commander,
+body, or analysis client speaks the same wire:
+
+```mermaid
+flowchart TB
+    NCP["NCP — the wire contract<br/>ncp-core · ncp-zenoh · ncp-gateway<br/>peers: ncp-python · ncp-cpp · @sepehrmn/ncp (ncp-ts)"]
+    ENGRAM["Engram / Paper2Brain<br/>(example commander: NEST brain + SessionService)"]
+    CREBAIN["crebain<br/>(example body: robot / UAV plant)"]
+    PIDVLA["pid_vla<br/>(example analysis / observer client)"]
+    PIDRS["pid-rs<br/>(PID estimators — science library)"]
+
+    ENGRAM -->|"pins tag v0.5.0"| NCP
+    CREBAIN -->|"pins tag v0.5.0"| NCP
+    PIDVLA -->|"pins tag v0.5.0"| NCP
+    PIDVLA -->|"git submodule (not an NCP consumer)"| PIDRS
+```
+
+## FAQ
+
+### What is NCP?
+A versioned, typed, transport-agnostic **wire contract** that lets a running NEST
+neural simulation (spiking, binary, and rate-based) perceive and act through robots,
+UAVs, and analysis clients. It is a Rust SDK (`ncp-core`) with wire-identical Python,
+C/C++, and TypeScript peers, carried over Zenoh (recommended), WebSocket, or any bus.
+
+### How is NCP different from ROS 2 / DDS?
+NCP is **complementary to**, not a replacement for, ROS 2 — a host app can share one
+Zenoh session across ROS traffic and NCP. NCP adds what a generic robotics bus does
+not: a neuroscience-aware record/stimulus model, mandatory per-frame scientific
+provenance, and a safety-gated action plane with an explicit `mode`/`ttl_ms` wire
+authority. See [`RATIONALE.md`](RATIONALE.md).
+
+### How is NCP different from MUSIC?
+MUSIC (Djurfeldt et al. 2010) and the ROS-MUSIC toolchain (Weidel et al. 2016)
+pioneered real-time NEST↔robot loops; NCP is informed by, not a replacement for, that
+lineage. NCP is a typed cross-language *wire contract* with versioning, a safety gate,
+and provenance — where MUSIC is an MPI-based port-connection runtime. See
+[`NEST_REALTIME.md`](NEST_REALTIME.md).
+
+### Is NCP real-time? Can it read NEST live without stopping it?
+Yes — NCP reads a running NEST kernel chunk-by-chunk without halting it, like MUSIC.
+[`NEST_REALTIME.md`](NEST_REALTIME.md) reports a measured real-time-factor sweep; the
+transport overhead is well under the simulator's per-chunk cost.
+
+### Does NCP reproduce neuroscience papers?
+**No.** Returned `V_m`/spikes are raw simulation outputs of a specified model, never a
+validated reproduction. Every frame carries `is_simulation_output=true` and
+`calibrated_posterior=false`, a machine-checkable epistemic boundary. A
+neuro-controller is a control artifact, not a paper-reproduction claim.
+
+### What transports and languages does it support?
+Transports: Zenoh per-plane bus (recommended/shipped), a WebSocket/JSON fallback, and
+an optional gRPC service for lifecycle RPC. Languages: Rust (`ncp-core`, reference),
+Python (PyO3), C/C++ (C ABI), and TypeScript (`@sepehrmn/ncp`) — all wire-identical off
+the one `proto/ncp.proto` contract.
+
+### Which version do I pin?
+Pin the latest release tag, **`v0.5.0`** (wire `0.5`). Pre-1.0 the minor is breaking:
+the version guard fails closed, so a `0.4` peer and a `0.5` peer cleanly refuse each
+other rather than silently mis-decoding.
+
+### Is the action plane secure?
+Not by default. On an open realm the action plane is world-writable; the `mode`/`ttl_ms`
+governor is defense-in-depth, not network security. Deploy on a trusted closed realm,
+or enable the shipped per-plane Zenoh ACL + mutual TLS — see [`SECURITY.md`](SECURITY.md).
 
 ## Status
 
 NCP is **pre-1.0 and experimental.** Specifically:
 
-- **The wire may change.** Minor versions are treated as breaking; the version guard fails closed rather than coercing. **Pin the latest tag** (`tag = "v0.4.4"` above — the wire is `0.4`, with `v0.4.4` the buf-breaking baseline) for anything you build against.
+- **The wire may change.** Minor versions are treated as breaking; the version guard fails closed rather than coercing. **Pin the latest tag** (`tag = "v0.5.0"` above — the wire is `0.5`, with `v0.5.0` the buf-breaking baseline) for anything you build against.
 - **Single reference implementation.** `proto/ncp.proto` is the normative contract; `ncp-core` (Rust) is the reference implementation and Python/C/TS are bindings off the same contract, verified by field-set-parity drift guards — not yet a multi-implementation conformance program.
 - **The action plane is currently unauthenticated.** On an open realm it is effectively world-writable: anyone who can reach the realm can publish commands. The local `mode`/`ttl_ms` governor is defense-in-depth, **not** network security. Deploy only on a trusted, closed realm. See [`SECURITY.md`](SECURITY.md) and the P0 work in [`ROADMAP.md`](ROADMAP.md).
 
@@ -156,7 +225,7 @@ A Zenodo DOI will be minted when the project is archived to Zenodo; until then, 
   author  = {Sepehr Mahmoudian},
   title   = {NCP — Neuro-Cybernetic Protocol},
   year    = {2026},
-  version = {0.4.4},
+  version = {0.5.0},
   url     = {https://github.com/sepahead/NCP}
 }
 ```

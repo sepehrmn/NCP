@@ -1,4 +1,4 @@
-# Neuro-Cybernetic Protocol (NCP) v0.4
+# Neuro-Cybernetic Protocol (NCP) v0.5
 
 A versioned, **transport-agnostic, project-agnostic** standard for letting a
 running NEST simulation serve external robot / UAV / simulation systems —
@@ -71,8 +71,30 @@ compatibility gate (above), while `contract_hash` (carried in
 wire-semantically-canonicalized proto) is an **advisory** identity signal — a
 mismatch within a compatible version is *logged, not rejected* (the peers are on
 different but compatible contract revisions). A strict `verify_contract` opt-in
-exists for deployments that mandate an exact revision. NCP is **0.4** — pre-1.0, the
+exists for deployments that mandate an exact revision. NCP is **0.5** — pre-1.0, the
 wire may still change; pin the exact version you build against.
+
+The session lifecycle, with the version (HARD) + contract-hash (ADVISORY) handshake:
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant C as Client (e.g. a robot / analysis peer)
+    participant S as Server (e.g. an Engram SessionService)
+    C->>S: OpenSession{ ncp_version="0.5", contract_hash, network, record, stimulus, sim }
+    Note over S: check_version (HARD: exact major.minor, fail-closed)<br/>negotiate(contract_hash) (ADVISORY: log on mismatch)
+    alt incompatible ncp_version
+        S-->>C: SessionOpened{ ok=false, error }
+    else compatible
+        S-->>C: SessionOpened{ ok=true, backend, resolved, provenance, contract_hash }
+        loop per chunk
+            C->>S: StepRequest / RunRequest{ advance_ms|duration_ms, stimulus }
+            S-->>C: ObservationFrame{ seq, records, is_simulation_output=true, calibrated_posterior=false }
+        end
+        C->>S: CloseSession{ session_id }
+        S-->>C: SessionClosed{ ok=true }
+    end
+```
 
 ## 2. Entity model (perception, action, neither; 0..N of each)
 

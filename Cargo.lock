@@ -1157,7 +1157,7 @@ dependencies = [
 
 [[package]]
 name = "ncp-core"
-version = "0.4.4"
+version = "0.5.0"
 dependencies = [
  "schemars 1.2.1",
  "serde",
@@ -1167,7 +1167,7 @@ dependencies = [
 
 [[package]]
 name = "ncp-cpp"
-version = "0.4.4"
+version = "0.5.0"
 dependencies = [
  "ncp-core",
  "serde_json",
@@ -1175,7 +1175,7 @@ dependencies = [
 
 [[package]]
 name = "ncp-gateway"
-version = "0.4.4"
+version = "0.5.0"
 dependencies = [
  "ncp-core",
  "ncp-zenoh",
@@ -1185,7 +1185,7 @@ dependencies = [
 
 [[package]]
 name = "ncp-python"
-version = "0.4.4"
+version = "0.5.0"
 dependencies = [
  "ncp-core",
  "pyo3",
@@ -1194,7 +1194,7 @@ dependencies = [
 
 [[package]]
 name = "ncp-zenoh"
-version = "0.4.4"
+version = "0.5.0"
 dependencies = [
  "ncp-core",
  "serde",

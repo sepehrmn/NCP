@@ -99,7 +99,7 @@ field, changing a type, removing an enum value, or changing the meaning of exist
 bytes — is breaking and **must** include, in the same PR:
 
 1. An explicit **`ncp_version` bump**. The version constant lives in
-   `ncp-core/src/messages.rs` (`NCP_VERSION`, currently `"0.4"`).
+   `ncp-core/src/messages.rs` (`NCP_VERSION`, currently `"0.5"`).
 2. A corresponding update to the **specification**
    (`NEURO_CYBERNETIC_PROTOCOL.md`), the **`.proto` definitions** (`proto/`),
    and the **JSON Schemas** (`schemas/`).

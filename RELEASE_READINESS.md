@@ -1,57 +1,63 @@
 # Release readiness — NCP wire contract
 
-Status of NCP as a **release-grade, future-extensible wire** (the question: can v0.4.x
-evolve additively without breaking peers, and is the live medum+contract proven?). This
-is an honest, adversarially-reviewed assessment, not a green-badge claim.
+Status of NCP as a **release-grade, future-extensible wire**: can `v0.5.x` evolve
+additively without breaking peers, and is the live medium + contract proven? This is
+an honest, adversarially-reviewed assessment, not a green-badge claim.
+
+**Verdict (v0.5.0):** the release-readiness checklist below is **closed**. `0.5` is the
+deliberate stable-wire cut — the baseline a stable wire is measured against — and the
+control-plane contract is proven end-to-end across a real process + language boundary,
+over a real transport, with the safety authority and the version gate exercised on the
+wire. NCP remains pre-1.0 (`0.x`, minor-is-breaking) by policy, with the residual
+caveats called out at the end — those are *disclosed limitations*, not open blockers.
 
 ## Where it stands
 
-The control-plane contract is **proven to flow end-to-end across a real process +
-language boundary, over a real transport, without NEST or `zenoh-python`** (the backend
-is separable from the wire — engram's `MockBackend` emits real `Observation` frames):
+The control-plane contract flows end-to-end across a real process + language boundary,
+over a real transport, **without NEST or `zenoh-python`** (the backend is separable
+from the wire — engram's `MockBackend` emits real `Observation` frames):
 
 - ✅ Two **independent Zenoh sessions** over a real tcp link drive `open→step→run→close`
   through the typed `ZenohNcpClient` + the version/advisory-contract handshake
-  (`ncp-zenoh/tests/cross_session_rpc.rs`, gated by `cargo test`, readiness-polled).
+  (`ncp-zenoh/tests/cross_session_rpc.rs`, readiness-polled).
 - ✅ A **Rust** client drives the **real Python** engram server over localhost TCP
-  (`e2e/run_cross_language_e2e.py` + `ncp-core/examples/ncp_tcp_client.rs`) — a
-  crebain/pid_vla-style Rust peer ↔ engram.
+  (`e2e/run_cross_language_e2e.py` + `ncp-core/examples/ncp_tcp_client.rs`).
 - ✅ engram's **real** `SessionService` serves the lifecycle across a process boundary
-  (`Paper2Brain/.../test_e2e_cross_process.py`, ubuntu smoke job, NEST-free), with
-  forward/backward-compat and **malformed/unknown-frame** robustness (clean error frame,
-  framing survives).
+  (`Paper2Brain/.../test_e2e_cross_process.py`, ubuntu smoke, NEST-free), with
+  forward/backward-compat and malformed/unknown-frame robustness.
 - ✅ All four peers decide identically on the contract functions (the behavioral corpus).
 - ✅ The scientific-boundary discriminators hold on every reply over every medium.
 
-## Fixed (this round, from the adversarial review)
+## The checklist — CLOSED in v0.5.0
 
-- **Unknown enum variants are now forward-compatible** — the descriptive wire enums gained
-  a `#[serde(other)] Unknown` sentinel (deserialization-only; schema/TS/`CONTRACT_HASH`
-  unchanged), so an additive enum value within a wire version no longer hard-rejects older
-  peers. *(Rust reference + the `ncp-python` binding, which inherits it via serde.)*
-- **Flaky sleep → readiness poll** in the Zenoh e2e; **malformed-frame** test added;
-  **cross-language runner** no longer passes green on a cargo build failure (only a missing
-  toolchain skips).
-
-## Remaining before a stable-wire (1.0) release — the checklist
-
-The suite proves **interoperability at HEAD**, not yet that v0.4.x **stays** wire-stable:
-today only one oracle is *frozen* (`buf breaking` vs tag `v0.4.0`, proto-only); the
-schemas, golden vectors, behavior corpus, and per-language constants all **regenerate from
-/ track the reference**, so a wire-break expressible outside the proto has no frozen anchor.
-
-| # | Item | Severity | Concretely |
+| # | Item | Severity | Status |
 |---|---|---|---|
-| 1 | **Safety governor over the wire** | release-blocking | The HOLD/ESTOP/clamp authority is only unit-tested in-process. Add a cross-session ncp-zenoh test: a `plant` runs `SafetyGovernor::govern` on each received `CommandFrame`; a `controller` publishes a geofence-breaching sensor → assert the command on the wire is latched ESTOP+zeroed; stale sensor → HOLD; over-limit → clamp. |
-| 2 | **engram Pydantic enum mirror** | release-blocking | The Python *binding* inherits the enum fix, but engram's independent Pydantic enums (`session.py`/`protocol.py`) still hard-reject unknown values. Add a `_missing_` classmethod returning an `UNKNOWN` member to each wire enum (the Python analogue of `#[serde(other)]`). |
-| 3 | **Frozen v0.4.0 JSON-wire baseline gate** | release-blocking | Freeze a `v0.4.0` snapshot of `schemas/` + golden vectors + the required-field lists + `NCP_VERSION` + the enum/mode wire-string sets, and add a CI gate diffing CURRENT-vs-FROZEN (additive-only within a wire version) — extending buf's proto-only guarantee to the whole JSON wire. Promote `CommandFrame.mode` to the proto `Mode` enum so buf covers its values. |
-| 4 | **Wire-version single source + mixed-version e2e** | should-fix | `NCP_VERSION` is two independent hardcoded `"0.4"` constants (Rust + Python). Assert each peer's `NCP_VERSION == conformance/behavior/vectors.json.ncp_version` (the corpus already does this for `contract_hash`); add a real mixed-version e2e (server bumped to 0.5, 0.4 client rejected). |
-| 5 | **new→old reply tolerance + nested unknown field** | should-fix | Forward-compat is tested only request-side and top-level. Add: a reply carrying a future field (old client still decodes); an unknown field in a *nested* message; a Python test pinning `extra='ignore'` (a careless `deny_unknown_fields`/`extra='forbid'` would silently break every peer). |
-| 6 | **TS + C++ live-transport clients** | nice-to-have | TS/C++ peers only run the decision corpus; add a TS (node) and C++ (C-ABI) client to `run_cross_language_e2e.py` so all four peers are driven over a live transport. |
-| 7 | **Bulk observation codec cross-process** | nice-to-have | `ncp-core::bulk` is byte-pinned in-process only. Round-trip a `BulkBlock` across the wire, and feed a hostile block (bad magic, lying length, allocation-bomb row count) to confirm fail-closed, not crash. |
+| 1 | **Safety governor over the wire** | release-blocking | ✅ `ncp-zenoh/tests/safety_governor_over_wire.rs`: a plant runs `SafetyGovernor::govern` on each `CommandFrame` received over a real Zenoh link; corpus-driven HOLD/ESTOP/clamp verdicts, and the **ESTOP latch survives the wire** (a breach latches; a subsequent clean frame is still ESTOP). |
+| 2 | **engram Pydantic enum mirror** | release-blocking | ✅ The six descriptive enums gained `UNKNOWN` + `_missing_` (the Python analogue of `#[serde(other)] Unknown`); `Mode` fail-safes to `HOLD`; `SimMode` still rejects (no Rust counterpart). Round-trip + nested/reply tolerance tests added. |
+| 3 | **Frozen JSON-wire baseline gate** | release-blocking | ✅ `scripts/check_wire_baseline.py` + `conformance/baseline/v0.5.0/`: additive-only diff (no removed field/enum-value, no newly-required field, no type change) of CURRENT vs the frozen snapshot. Wired into `scripts/check.sh` + CI. `CommandFrame.mode`/`ControlStatus.mode`/`SimConfig.mode` are now proto enums, so `buf` covers their values too. |
+| 4 | **Wire-version single source + mixed-version e2e** | should-fix | ✅ Each peer + the corpus are cross-checked for `NCP_VERSION`/`CONTRACT_HASH` (`behavior_conformance.rs`, `check-version-coherence.sh`); a `0.4` peer is proven fail-closed-rejected by a `0.5` server over the engram cross-process **and** the Zenoh transports, with the `0.5↔0.5` happy path kept. |
+| 5 | **new→old reply tolerance + nested unknown field** | should-fix | ✅ Reply-side + nested-message forward-compat tested (Rust + engram Pydantic); a pin asserts no wire model sets `extra='forbid'`. |
 
-**Bottom line:** the live cross-process loop is real and tested, and the biggest
-forward-compat hole (unknown enum variants on the reference) is fixed. Two release-blockers
-(the safety governor over a real transport, and the engram Python enum mirror) and one
-structural gate (a frozen JSON-wire baseline) remain before NCP should be tagged as a
-**stable** wire. Until then it is a sound, interoperable **pre-1.0** wire.
+**Consciously deferred (nice-to-have, not blocking):** TS + C++ *live-transport* clients
+in `e2e/run_cross_language_e2e.py` (cross-language decisions are already proven by the
+4-peer behavioral corpus, and live transport by the Rust↔Python e2e), and a
+cross-process bulk-codec round-trip (the bulk decoder's hostile-input fail-closed —
+bad magic, lying length, allocation-bomb row count — is already comprehensively tested
+in-process in `bulk.rs`, and the codec is byte-pinned + conformance-checked). These are
+documented here rather than left silent.
+
+## Residual caveats (disclosed limitations, by policy — not open blockers)
+
+- **Pre-1.0 (`0.x`).** The wire may still change; minor-is-breaking, the version guard
+  fails closed. Pin `tag = "v0.5.0"`.
+- **Single reference implementation.** `proto/ncp.proto` is normative; `ncp-core` (Rust)
+  is the reference and the other peers are bindings/mirrors verified by parity + the
+  behavioral corpus — not yet a multi-implementation conformance program.
+- **The action plane is unauthenticated on an open realm.** The `mode`/`ttl_ms` governor
+  is defense-in-depth, not network security. Deploy on a trusted closed realm or enable
+  the shipped per-plane Zenoh ACL + mutual TLS (`SECURITY.md`, `ROADMAP.md` P0).
+
+**Bottom line:** the live cross-process loop is real and tested, the forward-compat and
+safety properties are proven on the wire, and the whole JSON wire (not just the proto)
+is now anchored by a frozen baseline. `v0.5.0` is a sound, interoperable **stable-wire
+cut** with its residual limitations disclosed above.
