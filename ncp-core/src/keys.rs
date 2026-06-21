@@ -13,8 +13,14 @@
 //! {realm}/session/{id}/observation              neural/diagnostic   (pub/sub, free observer tap)
 //! ```
 
-/// Default realm (key-expression prefix). N Engram instances share one keyspace.
-pub const DEFAULT_REALM: &str = "engram/ncp";
+/// Default realm (key-expression prefix) — a **neutral, project-agnostic** fallback.
+/// A realm is *addressing*, not a credential: every peer that shares a deployment
+/// agrees on one realm string so their keyspaces line up. NCP names no consumer here;
+/// a deployment picks its own realm (via `Keys::new` / `ZenohBus::open_realm` / the
+/// `NCP_REALM` env var). E.g. an Engram fleet might standardise on `"engram/ncp"`, and
+/// its consumers (a pid_vla observer, a crebain bridge) target that same string — that
+/// choice lives in the *deployment*, not in the protocol.
+pub const DEFAULT_REALM: &str = "ncp";
 
 /// Is `s` safe to interpolate into a single key segment? A valid segment is
 /// non-empty and contains none of the Zenoh key-expression delimiters/wildcards
@@ -96,8 +102,8 @@ impl Keys {
         format!("{}/observation", self.session(id))
     }
 
-    /// All of a session's sensors (wildcard) — e.g. Engram subscribing to every
-    /// sensor of one UAV, whatever the count: `…/session/{id}/sensor/**`.
+    /// All of a session's sensors (wildcard) — e.g. a controller subscribing to
+    /// every sensor of one UAV, whatever the count: `…/session/{id}/sensor/**`.
     pub fn sensor_glob(&self, id: &str) -> String {
         format!("{}/sensor/**", self.session(id))
     }
@@ -127,19 +133,26 @@ mod tests {
 
     #[test]
     fn key_scheme() {
+        // The default realm is the neutral "ncp"; a deployment overrides it.
         let k = Keys::default();
-        assert_eq!(k.rpc(), "engram/ncp/rpc");
-        assert_eq!(k.sensor("s1"), "engram/ncp/session/s1/sensor");
-        assert_eq!(
-            k.sensor_named("s1", "imu"),
-            "engram/ncp/session/s1/sensor/imu"
-        );
+        assert_eq!(k.rpc(), "ncp/rpc");
+        assert_eq!(k.sensor("s1"), "ncp/session/s1/sensor");
+        assert_eq!(k.sensor_named("s1", "imu"), "ncp/session/s1/sensor/imu");
         assert_eq!(
             k.command_named("s1", "cmd_vel"),
-            "engram/ncp/session/s1/command/cmd_vel"
+            "ncp/session/s1/command/cmd_vel"
         );
-        assert_eq!(k.observation("s1"), "engram/ncp/session/s1/observation");
-        assert_eq!(k.session_glob("s1"), "engram/ncp/session/s1/**");
+        assert_eq!(k.observation("s1"), "ncp/session/s1/observation");
+        assert_eq!(k.session_glob("s1"), "ncp/session/s1/**");
+    }
+
+    #[test]
+    fn realm_is_an_explicit_deployment_choice() {
+        // A deployment (e.g. an Engram fleet) picks its own realm; NCP names no
+        // consumer in its default. The key builders interpolate whatever is given.
+        let k = Keys::new("engram/ncp");
+        assert_eq!(k.rpc(), "engram/ncp/rpc");
+        assert_eq!(k.observation("uav3"), "engram/ncp/session/uav3/observation");
     }
 
     #[test]

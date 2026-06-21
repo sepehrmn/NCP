@@ -1,7 +1,7 @@
 # Neuro-Cybernetic Protocol (NCP) — Rust reference SDK (workspace).
 #
-# NCP is a versioned, transport-agnostic, project-agnostic standard for letting an
-# Engram-driven NEST simulation serve external robot / UAV / simulation systems
+# NCP is a versioned, transport-agnostic, project-agnostic standard for letting a
+# NEST-based simulation serves external robot / UAV / simulation systems
 # (perception, action, both, or neither). This Rust workspace is the **normative
 # reference implementation** — the protocol is meant to become a reusable standard
 # (cf. MCP/ACP), and Rust is the canonical, high-performance implementation.
@@ -9,7 +9,7 @@
 # This workspace is self-contained and **extractable**: it has no path/parent
 # dependency on the surrounding Paper2Brain repo and can be lifted into its own
 # repository / published to crates.io with no refactoring. Consumers (robot/UAV
-# bodies, analysis/observer clients, and an Engram gateway) depend on `ncp-core`
+# bodies, analysis/observer clients, and a commander gateway) depend on `ncp-core`
 # (+ `ncp-zenoh`) as a normal dependency.
 #
 # Crates:
@@ -17,7 +17,7 @@
 #                 rate codec, safety governor, in-process bus. serde-only.
 #   ncp-zenoh   — the recommended decoupled transport: Zenoh queryable (RPC) +
 #                 pub/sub (perception/action/observation data planes), QoS.
-#   ncp-gateway — Engram's Rust edge: runs the Zenoh bus and bridges RPC to the
+#   ncp-gateway — the commander's Rust edge (e.g. an Engram host): runs the Zenoh bus and bridges RPC to the
 #                 Python SessionService over a localhost socket (NEST stays Python).
 
 [workspace]

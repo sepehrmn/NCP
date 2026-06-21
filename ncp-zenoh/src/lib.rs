@@ -94,10 +94,10 @@ fn resolve_default_config() -> Result<Config> {
 /// A transport plane with its QoS profile.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Plane {
-    /// Sensors → Engram. Lossy-OK: TX-queue DROP only when full, no conflation
+    /// Sensors → controller. Lossy-OK: TX-queue DROP only when full, no conflation
     /// guarantee (drops some frames, not necessarily down to the latest).
     Perception,
-    /// Engram → actuators. Lowest-latency, express, safety-critical.
+    /// Controller → actuators. Lowest-latency, express, safety-critical.
     Action,
     /// Lifecycle RPC replies / observation broadcast. Reliable.
     Control,
@@ -303,7 +303,7 @@ impl ZenohBus {
     // ───────────────────────── server side ─────────────────────────
 
     /// Serve the control-plane RPC queryable. `handler` maps request JSON bytes →
-    /// reply JSON bytes (in the Engram gateway it forwards to Python
+    /// reply JSON bytes (e.g. a gateway forwards it to a Python backend's
     /// `SessionService.handle_json`). Runs until the returned task is dropped.
     pub async fn serve_rpc<F>(&self, handler: F) -> Result<()>
     where

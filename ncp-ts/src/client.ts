@@ -223,7 +223,7 @@ export class NeuroSimClient {
     })
     const opened = unwrap<SessionOpenedReply>(reply)
     // Advisory contract-hash check (the reply half): log a mismatch, do not throw —
-    // the version is the hard gate (mirrors ncp-zenoh::open / engram service.handle).
+    // the version is the hard gate (mirrors the NCP session-service contract).
     const advisory = contractStatus((opened as { contract_hash?: string | null }).contract_hash)
     if (advisory) console.warn(`[ncp] ${advisory}`)
     return opened

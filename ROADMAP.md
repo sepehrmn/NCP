@@ -47,7 +47,7 @@ used `"get"` in `messages`, which is not a valid Zenoh token, so zenohd would
 reject the whole config (the mitigation read as "secured" while doing nothing).
 Fixed to the correct tokens (`query` / `declare_subscriber`), clarified the
 exact-string `cert_common_names` matching, and added `scripts/check_acl_template.py`
-(CI guard: invalid-token detection + the "only `engram` may PUT on `…/command/**`"
+(CI guard: invalid-token detection + the "only `commander` may PUT on `…/command/**`"
 safety invariant), wired into `scripts/check.sh`.
 
 - **Validate the mTLS-bound identity in a live deployment.** The remaining P0 work

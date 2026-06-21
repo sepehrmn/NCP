@@ -3,7 +3,8 @@
 //! So Python projects use the **canonical Rust implementation** of NCP rather
 //! than reimplementing the wire: the version guard, the key scheme, the rate
 //! codec, the action-plane safety governor, and message validation all come from
-//! `ncp-core`. Engram's NEST server keeps its Pydantic models for the server side,
+//! `ncp-core`. A Python backend may keep its own server-side models (e.g. Engram's
+//! NEST server keeps Pydantic ones),
 //! but any Python peer can compute keys, encode/decode, and validate frames
 //! through this module and be guaranteed wire-identical to the Rust and TS peers.
 //!
@@ -16,8 +17,8 @@
 //! ```python
 //! import ncp
 //! ncp.NCP_VERSION                      # "0.4"
-//! k = ncp.Keys("engram/ncp")
-//! k.command("uav3")                    # "engram/ncp/session/uav3/command"
+//! k = ncp.Keys("ncp")                  # the realm is a deployment choice (e.g. "engram/ncp")
+//! k.command("uav3")                    # "ncp/session/uav3/command"
 //! ncp.decode_command(codec_json, '{"vel_x":200.0}', t=0.0, seq=7)  # CommandFrame JSON
 //! ```
 

@@ -1,6 +1,6 @@
 //! Transport-neutral **bus** abstraction: RPC via a *queryable* on a key
 //! expression, streaming via *pub/sub* on per-session keys. Peers address data
-//! (`engram/ncp/**`), not server addresses — location-transparent, many-to-many.
+//! (`{realm}/**`), not server addresses — location-transparent, many-to-many.
 //!
 //! `ncp-core` ships a synchronous `Bus` trait plus an in-process `LocalBus`
 //! (deterministic, dependency-free — for tests and co-process use) and the
@@ -148,8 +148,8 @@ impl<B: Bus> NcpBusClient<B> {
 }
 
 /// Serve NCP RPC over a `Bus`: a queryable answers Open/Step/Run/Close by
-/// delegating to `handler` (in the Engram gateway, `handler` forwards to the
-/// Python `SessionService.handle_json`).
+/// delegating to `handler` (e.g. the NCP gateway's `handler` forwards to a
+/// backend's `SessionService.handle_json`).
 pub struct NcpBusServer<B: Bus> {
     pub bus: B,
     pub keys: Keys,
@@ -203,8 +203,8 @@ mod tests {
         let bus = LocalBus::new();
         let k = Keys::default();
 
-        // Engram subscribes to each UAV's whole sensor set (any count) via the
-        // per-UAV sensor wildcard; the sample key identifies which sensor.
+        // A controller subscribes to each UAV's whole sensor set (any count) via
+        // the per-UAV sensor wildcard; the sample key identifies which sensor.
         let sensors = Arc::new(Mutex::new(Vec::<String>::new()));
         for uav in ["uav1", "uav2", "uav3"] {
             let sink = sensors.clone();
@@ -269,20 +269,20 @@ mod tests {
     fn local_bus_rpc_and_pubsub() {
         let bus = LocalBus::new();
         bus.declare_queryable(
-            "engram/ncp/rpc",
+            "ncp/rpc",
             Arc::new(|p: &[u8]| {
                 let mut v = b"echo:".to_vec();
                 v.extend_from_slice(p);
                 v
             }),
         );
-        let reply = bus.query("engram/ncp/rpc", b"hi").unwrap();
+        let reply = bus.query("ncp/rpc", b"hi").unwrap();
         assert_eq!(reply, b"echo:hi");
 
         let seen = Arc::new(Mutex::new(Vec::<String>::new()));
         let seen2 = seen.clone();
         bus.declare_subscriber(
-            "engram/ncp/session/s1/**",
+            "ncp/session/s1/**",
             Arc::new(move |_k: &str, p: &[u8]| {
                 seen2
                     .lock()
@@ -290,10 +290,8 @@ mod tests {
                     .push(String::from_utf8_lossy(p).into_owned());
             }),
         );
-        bus.put("engram/ncp/session/s1/observation", b"obs")
-            .unwrap();
-        bus.put("engram/ncp/session/s2/observation", b"nope")
-            .unwrap();
+        bus.put("ncp/session/s1/observation", b"obs").unwrap();
+        bus.put("ncp/session/s2/observation", b"nope").unwrap();
         assert_eq!(&*seen.lock().unwrap(), &vec!["obs".to_string()]);
     }
 }

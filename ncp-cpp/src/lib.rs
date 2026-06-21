@@ -71,7 +71,7 @@ pub extern "C" fn ncp_version() -> *mut c_char {
     })
 }
 
-/// The default realm ("engram/ncp"). Caller frees.
+/// The default realm — the neutral [`ncp_core::DEFAULT_REALM`] (a deployment sets its own). Caller frees.
 #[no_mangle]
 pub extern "C" fn ncp_default_realm() -> *mut c_char {
     ffi_guard(std::ptr::null_mut(), || {

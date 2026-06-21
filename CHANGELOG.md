@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **NCP is now project-neutral — no consumer name baked into the protocol.** The
+  load-bearing fix: `ncp_core::DEFAULT_REALM` changed from the project-specific
+  `"engram/ncp"` to the neutral `"ncp"`. A realm is *addressing*, not a credential —
+  a deployment chooses its own (an Engram fleet may standardise on `"engram/ncp"`,
+  and its consumers target that string), but the protocol names no consumer. Also:
+  - The Zenoh ACL template (`deploy/zenoh-access-control.json5`) is now **role-based**
+    — the privileged command-publisher subject is `commander` (not `engram`), with
+    `{realm}` neutralised to `ncp/…`; `scripts/check_acl_template.py`, `SECURITY.md`,
+    and `deploy/README.md` track the rename.
+  - Doc/comment de-privileging across `ncp-core` (keys/bus/transport), `ncp-zenoh`,
+    `ncp-cpp` (ABI comments + demo), `ncp-python`, `ncp-ts`, the README, the
+    `NEURO_CYBERNETIC_PROTOCOL` spec, `INTEGRATING.md`, and the gateway README: Engram
+    is now consistently presented as ONE example commander/backend, not THE consumer.
+  - **Flow-preserving:** the live `engram↔crebain`/`engram↔pid_vla` rendezvous stays
+    `"engram/ncp"`, now named explicitly by each consumer (their deployment choice)
+    rather than inherited from NCP's default. Wire `0.4` unchanged; the proto, schemas,
+    and golden vectors were already neutral and are untouched.
+
 ## [0.4.4] - 2026-06-21
 
 Patch — **wire `0.4` unchanged** (no consumer re-pin). Cross-language behavioral parity.

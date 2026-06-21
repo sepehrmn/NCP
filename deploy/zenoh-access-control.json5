@@ -3,15 +3,18 @@
 // The action/command plane is world-writable on an open realm (see SECURITY.md):
 // anyone who can reach `{realm}/session/*/command` can drive an actuator. This
 // config closes that with a default-DENY ACL in which only the *authenticated*
-// `engram` subject may PUBLISH commands; the robot publishes only its sensors and
-// reads commands; observers may only READ. The three planes get distinct
+// `commander` subject may PUBLISH commands; the robot publishes only its sensors
+// and reads commands; observers may only READ. The three planes get distinct
 // per-subject permissions, so a perception-only client can never command.
 //
-// TEMPLATE — adapt `realm`, cert common-names, and interfaces to your deployment,
-// and pair with TLS (mutual auth) so `cert_common_names` is actually proven.
-// Apply via the Zenoh router/session config (`--config`) or the `connect`/`listen`
-// config block. Verified against the Zenoh 1.x access-control schema shape; test
-// in your environment before relying on it. Authoritative spec: zenoh.io docs.
+// TEMPLATE — `commander`/`robot`/`observer` are ROLES, not project names. Adapt the
+// realm (the key_exprs use the neutral default `ncp/…`; a deployment sets its own,
+// e.g. `engram/ncp/…`), the cert common-names (map your real commander/body/observer
+// certificates), and interfaces to your deployment, and pair with TLS (mutual auth)
+// so `cert_common_names` is actually proven. Apply via the Zenoh router/session
+// config (`--config`) or the `connect`/`listen` config block. Verified against the
+// Zenoh 1.x access-control schema shape; test in your environment before relying on
+// it. Authoritative spec: zenoh.io docs.
 {
   access_control: {
     enabled: true,
@@ -19,33 +22,33 @@
     default_permission: "deny",
 
     rules: [
-      // ── Engram (the simulation/brain): the ONLY subject permitted to PUBLISH
-      // on the safety-critical action (command) plane. Also emits neural data on
-      // the observation plane, reads sensors to compute, and answers the
-      // session-lifecycle RPC queryable.
+      // ── Commander (the simulation/brain, e.g. an Engram/NEST host): the ONLY
+      // subject permitted to PUBLISH on the safety-critical action (command) plane.
+      // Also emits neural data on the observation plane, reads sensors to compute,
+      // and answers the session-lifecycle RPC queryable.
       {
-        id: "engram-publishes-command-observation",
+        id: "commander-publishes-command-observation",
         messages: ["put", "delete"],
         flows: ["ingress", "egress"],
         permission: "allow",
         key_exprs: [
-          "engram/ncp/session/*/command/**",
-          "engram/ncp/session/*/observation",
+          "ncp/session/*/command/**",
+          "ncp/session/*/observation",
         ],
       },
       {
-        id: "engram-reads-sensor",
+        id: "commander-reads-sensor",
         messages: ["declare_subscriber"],
         flows: ["ingress", "egress"],
         permission: "allow",
-        key_exprs: ["engram/ncp/session/*/sensor/**"],
+        key_exprs: ["ncp/session/*/sensor/**"],
       },
       {
-        id: "engram-serves-rpc",
+        id: "commander-serves-rpc",
         messages: ["declare_queryable", "reply"],
         flows: ["ingress", "egress"],
         permission: "allow",
-        key_exprs: ["engram/ncp/rpc"],
+        key_exprs: ["ncp/rpc"],
       },
 
       // ── Robot / plant (the body): publishes its own sensors and subscribes
@@ -54,20 +57,20 @@
       // plane is itself a CONTROL INPUT — a spoofed SensorFrame steers the brain
       // and can defeat the geofence (false-data injection) — so sensor-PUT is
       // restricted to `robot` (enforced by scripts/check_acl_template.py),
-      // symmetric to command-PUT being restricted to `engram`.
+      // symmetric to command-PUT being restricted to `commander`.
       {
         id: "robot-publishes-sensor",
         messages: ["put", "delete"],
         flows: ["ingress", "egress"],
         permission: "allow",
-        key_exprs: ["engram/ncp/session/*/sensor/**"],
+        key_exprs: ["ncp/session/*/sensor/**"],
       },
       {
         id: "robot-reads-command",
         messages: ["declare_subscriber"],
         flows: ["ingress", "egress"],
         permission: "allow",
-        key_exprs: ["engram/ncp/session/*/command/**"],
+        key_exprs: ["ncp/session/*/command/**"],
       },
 
       // ── Session lifecycle: any authenticated client (robot/observer) may QUERY
@@ -80,7 +83,7 @@
         messages: ["query"],
         flows: ["ingress", "egress"],
         permission: "allow",
-        key_exprs: ["engram/ncp/rpc"],
+        key_exprs: ["ncp/rpc"],
       },
 
       // ── Observers (analysis taps): READ-ONLY on the perception + observation
@@ -91,8 +94,8 @@
         flows: ["ingress", "egress"],
         permission: "allow",
         key_exprs: [
-          "engram/ncp/session/*/sensor/**",
-          "engram/ncp/session/*/observation",
+          "ncp/session/*/sensor/**",
+          "ncp/session/*/observation",
         ],
       },
     ],
@@ -102,26 +105,28 @@
     // these common-names are actually proven — an open realm without mTLS makes
     // every subject trivially spoofable and this ACL meaningless.
     //
-    // NB: Zenoh matches `cert_common_names` by EXACT string equality, not glob —
-    // a value like "robot.*" matches only a CN literally equal to "robot.*", never
-    // "robot1". List one exact CN per certificate you issue (add more entries as
-    // you provision more bodies); do NOT rely on wildcards here.
+    // The CNs here are ROLE placeholders — replace them with the actual cert CNs your
+    // deployment issues (e.g. a `commander` CN might be `engram-service`). Zenoh
+    // matches `cert_common_names` by EXACT string equality, not glob — a value like
+    // "robot.*" matches only a CN literally equal to "robot.*", never "robot1". List
+    // one exact CN per certificate you issue (add more entries as you provision more
+    // bodies); do NOT rely on wildcards here.
     subjects: [
-      { id: "engram", cert_common_names: ["engram-service", "engram"] },
+      { id: "commander", cert_common_names: ["commander", "commander-service"] },
       { id: "robot", cert_common_names: ["robot", "uav", "body"] },
       { id: "observer", cert_common_names: ["observer", "analysis"] },
     ],
 
-    // Bind rules to subjects. THE SAFETY INVARIANT: only `engram` holds a rule
+    // Bind rules to subjects. THE SAFETY INVARIANT: only `commander` holds a rule
     // that PUTs on `…/command/**`; neither `robot` nor `observer` ever can.
     policies: [
       {
         rules: [
-          "engram-publishes-command-observation",
-          "engram-reads-sensor",
-          "engram-serves-rpc",
+          "commander-publishes-command-observation",
+          "commander-reads-sensor",
+          "commander-serves-rpc",
         ],
-        subjects: ["engram"],
+        subjects: ["commander"],
       },
       {
         rules: ["robot-publishes-sensor", "robot-reads-command", "client-queries-rpc"],

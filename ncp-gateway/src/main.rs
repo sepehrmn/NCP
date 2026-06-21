@@ -3,7 +3,7 @@
 //! # Configuration and security
 //!
 //! Config via env:
-//!   NCP_REALM        key-expression realm           (default `engram/ncp`)
+//!   NCP_REALM        key-expression realm           (default `ncp`; set per deployment)
 //!   NCP_BRIDGE_ADDR  Python bridge_server.py addr    (default `127.0.0.1:28474`)
 //!   NCP_ZENOH_CONFIG path to a Zenoh ACL/TLS config  (default: hardened, scouting off)
 //!

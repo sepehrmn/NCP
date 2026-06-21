@@ -8,7 +8,7 @@ This guard runs in CI without a Zenoh runtime and fails closed on:
 
   1. an invalid `messages` token (e.g. the `get` that zenohd rejects — the real
      token for the querier/get side is `query`), and
-  2. a violation of either PUT-authority invariant: only the `engram` (commander)
+  2. a violation of either PUT-authority invariant: only the `commander` (brain)
      policy may PUT on the `.../command/**` plane, AND only the `robot` (body)
      policy may PUT on the `.../sensor/**` plane. The perception plane is a control
      input too — a spoofed SensorFrame steers the controller and can defeat the
@@ -88,14 +88,15 @@ def check(cfg: dict) -> list[str]:
             sensor_put_rules.add(rid)
 
     # (2) PUT authority on each control plane is restricted to exactly one subject:
-    #     command -> engram (commander); sensor -> robot (body).
+    #     command -> commander (the brain); sensor -> robot (body). These are ROLES,
+    #     not project names — the template is project-neutral.
     for pol in policies:
         subjects = set(pol.get("subjects", []))
         for rid in pol.get("rules", []):
-            if rid in command_put_rules and subjects != {"engram"}:
+            if rid in command_put_rules and subjects != {"commander"}:
                 errors.append(
                     f"policy for subjects {sorted(subjects)} binds command-put rule "
-                    f"{rid!r}: only 'engram' (the commander) may publish on the action plane"
+                    f"{rid!r}: only 'commander' may publish on the action plane"
                 )
             if rid in sensor_put_rules and subjects != {"robot"}:
                 errors.append(
@@ -121,7 +122,7 @@ def _selftest() -> list[str]:
                         {
                             "id": "x",
                             "messages": ["put"],
-                            "key_exprs": ["engram/ncp/session/*/sensor/**"],
+                            "key_exprs": ["ncp/session/*/sensor/**"],
                         }
                     ],
                     "policies": [{"rules": ["x"], "subjects": ["observer"]}],
@@ -129,14 +130,14 @@ def _selftest() -> list[str]:
             },
         ),
         (
-            "a non-engram command-put policy",
+            "a non-commander command-put policy",
             {
                 "access_control": {
                     "rules": [
                         {
                             "id": "y",
                             "messages": ["put"],
-                            "key_exprs": ["engram/ncp/session/*/command/**"],
+                            "key_exprs": ["ncp/session/*/command/**"],
                         }
                     ],
                     "policies": [{"rules": ["y"], "subjects": ["robot"]}],
@@ -148,7 +149,7 @@ def _selftest() -> list[str]:
             {
                 "access_control": {
                     "rules": [
-                        {"id": "z", "messages": ["get"], "key_exprs": ["engram/ncp/rpc"]}
+                        {"id": "z", "messages": ["get"], "key_exprs": ["ncp/rpc"]}
                     ],
                     "policies": [],
                 }
@@ -186,7 +187,7 @@ def main() -> int:
     n_rules = len(cfg.get("access_control", {}).get("rules", []))
     print(
         f"OK: {ACL_PATH.name} — {n_rules} rules, tokens valid, "
-        f"command-put restricted to engram, sensor-put to robot"
+        f"command-put restricted to commander, sensor-put to robot"
     )
     return 0
 

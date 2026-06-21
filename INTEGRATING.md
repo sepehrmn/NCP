@@ -7,9 +7,10 @@ alternatives (the honest comparison, including where it is *not*, is in
 
 ## The minimal-invasiveness contract
 
-1. **Engram stays project-agnostic.** It speaks only NCP (entity/channel-addressed
-   messages). It carries **no** project topic names, message types, or field
-   layouts. So adding your project changes **zero** Engram code.
+1. **The commander stays project-agnostic.** The NCP commander/backend (e.g. Engram)
+   speaks only NCP (entity/channel-addressed messages). It carries **no** project
+   topic names, message types, or field layouts. So adding your project changes
+   **zero** commander code.
 2. **Your project owns its mapping, in your repo, in your language.** A thin
    adapter maps your sensors/actuators ↔ NCP `SensorFrame`/`CommandFrame`/stimulus/
    record. That is the *only* code you write.
@@ -50,7 +51,7 @@ no NCP-side edit when a new consumer appears.
 
 **Rust** — depend on the SDK; subscribe/publish the planes or open a session:
 ```rust
-let bus = ncp_zenoh::ZenohBus::open().await?;                 // realm engram/ncp
+let bus = ncp_zenoh::ZenohBus::open().await?;                 // realm ncp (the neutral default; set per deployment)
 bus.subscribe_commands("uav1", |_k, b| { /* CommandFrame → your actuator */ }).await?;
 bus.put_sensor("uav1", &serde_json::to_vec(&sensor_frame)?).await?;
 // or, to be the controller: ncp_zenoh::ZenohControlTransport + ncp_core::NeuroControlLoop
@@ -72,7 +73,7 @@ import type { SensorFrame, CommandFrame, ObservationFrame } from "ncp/bindings";
 **C++** — include `ncp.h`, link `ncp_cpp`:
 ```cpp
 #include "ncp.h"
-char* key = ncp_key_command("engram/ncp", "uav1");   // ncp_string_free(key)
+char* key = ncp_key_command("ncp", "uav1");   // ncp_string_free(key)
 char* cmd = ncp_decode_command(codec_json, rates_json, 0.0, 7,
                                /*frame_id=*/NULL, /*mode=*/NULL);
 ```
@@ -85,9 +86,10 @@ validation) comes from the one Rust core, so all peers are wire-identical.
 1. **Client-side adapter** (best) — your NCP client + mapping in your repo, against
    `ncp-core`/`ncp.proto`/`schemas/` (your client's own `src/ncp/` adapter module).
 2. **Declarative profile** (data, not code) — a JSON mapping a generic loader
-   consumes; no per-project class in Engram (a declarative profile shipped by your
-   client).
-3. **Plugin package** — `engram-ncp-<you>` registering a profile via entry points.
+   consumes; no per-project class in the commander (a declarative profile shipped by
+   your client).
+3. **Plugin package** — a `<commander>-ncp-<you>` package (e.g. `engram-ncp-<you>`)
+   registering a profile via entry points.
 
 ## Evaluated from 10 adopter lenses — what each gets, what was missing, what changed
 

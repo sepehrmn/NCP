@@ -28,7 +28,7 @@ void ncp_string_free(char *s);
 /* Protocol version (e.g. "0.1"). Caller frees. */
 char *ncp_version(void);
 
-/* Default realm ("engram/ncp"). Caller frees. */
+/* Default realm — the neutral ncp_core::DEFAULT_REALM (a deployment sets its own). Caller frees. */
 char *ncp_default_realm(void);
 
 /* 1 if major-compatible, 0 if not, -1 if unparseable/NULL. */

@@ -3,7 +3,7 @@
 [![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](#license)
 
 The **normative Rust reference** for the Neuro-Cybernetic Protocol (NCP): a versioned,
-transport-agnostic, project-agnostic standard for letting an Engram-driven NEST simulation
+transport-agnostic, project-agnostic standard for letting a NEST-based simulation
 serve external robot / UAV / simulation systems — for perception, action, both, or neither.
 
 This crate is the one other NCP peers depend on. It is serde-only (no transport): the wire

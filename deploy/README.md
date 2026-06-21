@@ -9,7 +9,7 @@ holds the **Zenoh per-plane access-control template**, not application code.
 ## `zenoh-access-control.json5`
 
 A **default-DENY** Zenoh ACL template (ROADMAP P0, issue #7) that closes the open-realm
-action plane: only the authenticated `engram` subject may PUBLISH commands, the `robot`
+action plane: only the authenticated `commander` subject may PUBLISH commands, the `robot`
 publishes only sensors and reads commands, and `observer` taps are READ-ONLY. The three
 planes (sensor / observation / command) get distinct per-subject permissions, so a
 perception-only client can never command.

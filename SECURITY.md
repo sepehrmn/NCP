@@ -56,13 +56,13 @@ SROS2, *publish* permission is access-controlled per topic independently of
 subscribe, on default-deny governance (cf. the **DDS-Security** access-control model
 and the SROS2 master governance that enables write access control on every topic).
 NCP's ACL template therefore restricts `…/sensor/**` PUT to the `robot` (body)
-subject, symmetric to `…/command/**` being restricted to `engram`; both
+subject, symmetric to `…/command/**` being restricted to `commander`; both
 PUT-authority invariants are mechanically enforced by
 [`scripts/check_acl_template.py`](scripts/check_acl_template.py).
 
 This is tracked as ROADMAP **P0** (authenticate the action plane) and
 [#7](https://github.com/sepahead/NCP/issues/7). A per-plane Zenoh ACL template
-(default-deny; only the authenticated `engram` subject may publish commands, the
+(default-deny; only the authenticated `commander` subject may publish commands, the
 robot publishes only its sensors, observers are read-only) is provided at
 [`deploy/zenoh-access-control.json5`](deploy/zenoh-access-control.json5) — pair it
 with mutual TLS so each subject's identity is proven. Until this ships in a
@@ -75,8 +75,8 @@ mutual TLS — without mTLS the `cert_common_names` are spoofable and the ACL is
 meaningless. To stand up an authenticated realm:
 
 1. **Issue certificates.** Create a CA, then per-subject client certs whose Common
-   Names match the ACL `subjects` globs: `engram-service` (the brain),
-   `robot-<id>`/`uav-<id>` (each body), `observer-<id>`/`analysis-<id>` (taps).
+   Names match the ACL `subjects` globs: `commander-service` (the brain, e.g. an
+   Engram host), `robot-<id>`/`uav-<id>` (each body), `observer-<id>`/`analysis-<id>` (taps).
    Keep the CA key offline; rotate leaf certs per deployment policy.
 2. **Enable mutual TLS on the Zenoh endpoints.** In the router (and every peer)
    config, use a TLS listen endpoint and require client auth — e.g.
@@ -90,8 +90,8 @@ meaningless. To stand up an authenticated realm:
    `with_config` block). `default_permission: "deny"` rejects anything not
    explicitly allowed.
 4. **Verify both PUT invariants.** With the realm up, confirm an `observer`/`robot`
-   identity is *rejected* when it `put`s on `…/session/*/command/**` (only `engram`
-   succeeds), AND that an `observer`/`engram` identity is *rejected* when it `put`s
+   identity is *rejected* when it `put`s on `…/session/*/command/**` (only `commander`
+   succeeds), AND that an `observer`/`commander` identity is *rejected* when it `put`s
    on `…/session/*/sensor/**` (only `robot` succeeds) — both control planes (action
    and perception) are then authenticated, not world-writable.
 
@@ -108,10 +108,10 @@ and the **required** outcome; a deployment is P0-validated only when all four ho
 
 | # | As identity (client cert CN) | Action | Required outcome |
 |---|---|---|---|
-| 1 | `engram-service` | `z_put -k "<realm>/session/s1/command/x" -v '…'` (with engram cert) | **ACCEPT** — the commander may publish commands |
+| 1 | `commander-service` | `z_put -k "<realm>/session/s1/command/x" -v '…'` (with commander cert) | **ACCEPT** — the commander may publish commands |
 | 2 | `robot-1` / `observer-1` | `z_put -k "<realm>/session/s1/command/x"` (with that cert) | **REJECT** — only the commander may write the action plane |
 | 3 | `robot-1` | `z_put -k "<realm>/session/s1/sensor/x"` (with robot cert) | **ACCEPT** — the plant may publish perception |
-| 4 | `engram-service` / `observer-1` | `z_put -k "<realm>/session/s1/sensor/x"` | **REJECT** — only the plant may write the perception plane |
+| 4 | `commander-service` / `observer-1` | `z_put -k "<realm>/session/s1/sensor/x"` | **REJECT** — only the plant may write the perception plane |
 
 Also confirm: a peer presenting **no** client cert (or a CN not in the ACL `subjects`)
 is refused at the mTLS layer before any ACL check (connection rejected, not just the

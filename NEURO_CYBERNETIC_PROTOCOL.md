@@ -6,14 +6,14 @@ robot/UAV bodies, analysis/observer clients, and **any others** ("there could be
 more"). One protocol, two complementary interaction patterns:
 
 1. **Neural-simulation service** *(the general case)* — an external system **asks
-   Engram for a simulation**, declares **what and where to record** (membrane
-   potential / spikes / rate from a single neuron, a synapse, or a population)
-   and **what stimuli to inject**, then **steps or runs** the simulation and
-   reads back the neural data. It serves **perception, action, both, or neither**:
-   Engram runs only the neural part the client requests; whether a given
+   the simulation backend for a simulation**, declares **what and where to record**
+   (membrane potential / spikes / rate from a single neuron, a synapse, or a
+   population) and **what stimuli to inject**, then **steps or runs** the simulation
+   and reads back the neural data. It serves **perception, action, both, or neither**:
+   the backend runs only the neural part the client requests; whether a given
    sensor/actuator is NEST-backed or classic ML is entirely the client's choice.
-2. **Closed-loop controller** *(a layered special case)* — Engram drives an
-   external actuator as "just another controller" over the system's *existing*
+2. **Closed-loop controller** *(a layered special case)* — the neural backend drives
+   an external actuator as "just another controller" over the system's *existing*
    transport (e.g. a robot/UAV client's MAVROS setpoint topics), non-invasively.
 
 Normative wire contract: `proto/ncp.proto` (proto-native; the JSON Schemas are its
@@ -99,19 +99,19 @@ surface. Lifecycle (each message has a JSON Schema of the same name):
 
 | Message | Dir | Purpose |
 |---|---|---|
-| `open_session` | client → Engram | request a simulation: a `NetworkRef`, a `RecordSpec`, a `StimulusSpec`, a `SimConfig`, optional entity `bindings` |
-| `session_opened` | Engram → client | ack with backend, resolved population sizes, and `SimProvenance` (model/seed, `calibrated_posterior=false`, `is_simulation_output=true`) |
-| `step_request` | client → Engram | advance one chunk; optional `stimulus_frame`; returns an `observation_frame` |
-| `run_request` | client → Engram | batch: advance `duration_ms` holding a stimulus; returns an `observation_frame` |
-| `observation_frame` | Engram → client | recorded data per record port (see below) |
+| `open_session` | client → server | request a simulation: a `NetworkRef`, a `RecordSpec`, a `StimulusSpec`, a `SimConfig`, optional entity `bindings` |
+| `session_opened` | server → client | ack with backend, resolved population sizes, and `SimProvenance` (model/seed, `calibrated_posterior=false`, `is_simulation_output=true`) |
+| `step_request` | client → server | advance one chunk; optional `stimulus_frame`; returns an `observation_frame` |
+| `run_request` | client → server | batch: advance `duration_ms` holding a stimulus; returns an `observation_frame` |
+| `observation_frame` | server → client | recorded data per record port (see below) |
 | `close_session` / `session_closed` | both | tear down |
 
 ### NetworkRef — what to simulate
-- `kind=handle` — a backend-issued `pynest_script_id` / `compiled_module_id` (an
-  Engram-generated network; the canonical, handle-based path).
+- `kind=handle` — a backend-issued `pynest_script_id` / `compiled_module_id` (a
+  backend-generated network; the canonical, handle-based path).
 - `kind=builtin` — a NEST built-in neuron model name (e.g. `iaf_psc_alpha`) with
   `population_sizes` (quick single-neuron / population sims).
-- `kind=model_id` — an Engram KG / paper-derived model id.
+- `kind=model_id` — a knowledge-graph / paper-derived model id.
 - `kind=spec` — a small inline spec (advisory).
 - `model_name` (optional) selects which registered model to create for a multi-model
   `handle`; `params` (numeric) / `population_sizes` carry advisory overrides.
@@ -163,7 +163,7 @@ representation. See [`PERFORMANCE.md`](PERFORMANCE.md).
 
 ## 4. The closed-loop controller (layered)
 
-For the "Engram is the brain" pattern, NCP adds control messages:
+For the "the neural network is the brain" pattern, NCP adds control messages:
 `capabilities` (handshake), `sensor_frame` (plant → controller), `command_frame`
 (controller → plant), `control_status`. A **codec** (`CodecSpec`) declares the
 sensor→spike encoding and spike→command decoding so a trained SNN trains against
@@ -185,7 +185,7 @@ want each client wired to a server address.
 
 | Medium | Coupling | Upsides | Downsides | Use when |
 |---|---|---|---|---|
-| **Zenoh** — *recommended decoupled default* | **low** — addresses *data* (`engram/ncp/**`), automatic discovery, many-to-many | RPC via **queryable**, streaming via **pub/sub**; location-transparent; N Engram instances on one keyspace; **robot/UAV clients already speak it** (a `ZenohBridge`, ROS 2 `rmw_zenoh`); carries protobuf or JSON | younger RPC ecosystem; you define the queryable convention; browsers need a router's WS plugin | the many-project fleet; robotics-native; multiple/replicated Engram instances |
+| **Zenoh** — *recommended decoupled default* | **low** — addresses *data* (`{realm}/**`), automatic discovery, many-to-many | RPC via **queryable**, streaming via **pub/sub**; location-transparent; N server instances on one keyspace; **robot/UAV clients already speak it** (a `ZenohBridge`, ROS 2 `rmw_zenoh`); carries protobuf or JSON | younger RPC ecosystem; you define the queryable convention; browsers need a router's WS plugin | the many-project fleet; robotics-native; multiple/replicated server instances |
 | **WebSocket + JSON** — *zero-friction fallback* | medium (client → one URL) | works from any language incl. browsers/Tauri-webview; human-readable; no codegen | no typing/codegen; manual correlation; verbose at high rate | quick starts, debugging, the frontend (shipped: `/api/neurocontrol/ws`) |
 | **gRPC** (HTTP/2 + protobuf) — *optional point-to-point* | **high** — client dials a host:port; needs a load balancer to scale | first-class bi-di streaming; typed codegen from `ncp.proto`; deadlines/backpressure | endpoint coupling; browser needs grpc-web/Connect; protoc step | cloud/enterprise point-to-point with a known endpoint |
 | **ROS 2 (DDS) + rosbridge** | low (within ROS) | native for ROS projects; QoS; rosbridge bridges browsers | couples non-ROS projects to ROS; heavy | the project is already ROS 2 |
@@ -202,18 +202,19 @@ for deployments that specifically want it. The bus binding is `bus.py`
 `SessionService.handle_json(message)` is the
 transport-neutral seam every binding calls.
 
-## 6. How a project integrates — and why Engram core stays project-agnostic
+## 6. How a project integrates — and why the commander core stays project-agnostic
 
 **Separation of concerns is the load-bearing rule:** project specifics (topic
 names, message types, field layouts, transport deps) must **not** live in the
-Engram repo — it has to scale to dozens of projects. Engram core speaks **only**
-NCP (entity/channel-addressed). A project integrates via one of three mechanisms,
-in decreasing preference, all of which keep its specifics *out of Engram*:
+commander's repo (e.g. Engram) — it has to scale to dozens of projects. The
+commander core speaks **only** NCP (entity/channel-addressed). A project integrates
+via one of three mechanisms, in decreasing preference, all of which keep its
+specifics *out of the commander*:
 
 1. **Client-side adapter (best).** The project owns its NCP client **and** its
-   mapping in *its own* repo/language, and calls Engram's service. For control,
-   **Engram emits NCP `command_frame`s; the project's adapter maps them to its
-   actuators** — so even the control path carries no project specifics in Engram.
+   mapping in *its own* repo/language, and calls the commander's service. For control,
+   **the commander emits NCP `command_frame`s; the project's adapter maps them to its
+   actuators** — so even the control path carries no project specifics in the commander.
    A robot/UAV client's drop-in adapter is a small client module (copy into your
    own `src/neuro/`; touches no existing client code).
 2. **Declarative profile (data, not code).** The project ships a JSON mapping
@@ -224,7 +225,7 @@ in decreasing preference, all of which keep its specifics *out of Engram*:
    installable `engram-ncp-<project>` package registering a profile under the
    `engram.ncp.profiles` entry-point group (`profiles.discover_plugins()`).
 
-Engram never assumes a fixed sensor/actor count: a system with no cameras or no
+The commander never assumes a fixed sensor/actor count: a system with no cameras or no
 UAVs simply declares no ports; one with many addresses each by entity path.
 Perception and action are symmetric — both are bindings of client entities to
 stimulus/record ports. The core registry ships **only** the `generic` profile;
@@ -289,8 +290,8 @@ key words **MUST**, **MUST NOT**, and **MAY** are used as defined in
 [RFC 8174](https://www.rfc-editor.org/rfc/rfc8174.html) (only the uppercase forms
 carry the normative meaning).
 
-**Engram's gateway (`ncp-gateway`).** Engram's brain is NEST (Python), so its NCP
-*server* stays Python. The gateway gives Engram a production-grade Rust Zenoh edge
+**The reference gateway (`ncp-gateway`).** When the commander's brain is NEST (Python)
+— as in the Engram reference — its NCP *server* stays Python. The gateway gives it a production-grade Rust Zenoh edge
 — it runs the `{realm}/rpc` queryable and the pub/sub planes and forwards each RPC
 to the Python `SessionService` over a localhost socket, reusing the one
 transport-neutral seam `handle_json`. NEST never leaves Python; the fleet-facing

@@ -1,7 +1,8 @@
-//! Closed-loop control runner (sync) — the layered special case where Engram is
-//! "just another controller". A `Controller` turns the latest `SensorFrame` into
-//! a `CommandFrame`; a `SafetyGovernor` clamps it; a `ControlTransport` delivers
-//! it. Mirrors `backend/neurocontrol/{transport,loop}.py`.
+//! Closed-loop control runner (sync) — the layered special case where a neural
+//! backend (e.g. an Engram network) is "just another controller". A `Controller`
+//! turns the latest `SensorFrame` into a `CommandFrame`; a `SafetyGovernor` clamps
+//! it; a `ControlTransport` delivers it. (A Python peer mirrors this in its
+//! `transport`/`loop` modules.)
 //!
 //! Clocks are injectable so the loop is deterministic under test.
 

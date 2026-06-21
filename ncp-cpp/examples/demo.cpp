@@ -30,7 +30,7 @@ int main() {
   std::cout << "NCP_VERSION   = " << take(ncp_version()) << "\n";
   std::cout << "DEFAULT_REALM = " << take(ncp_default_realm()) << "\n";
   std::cout << "command key   = "
-            << take(ncp_key_command("engram/ncp", "uav3")) << "\n";
+            << take(ncp_key_command("ncp", "uav3")) << "\n";
   std::cout << "check 0.1     = " << ncp_check_version("0.1", false) << "\n";
   std::cout << "check 1.0     = " << ncp_check_version("1.0", false) << "\n";
 
