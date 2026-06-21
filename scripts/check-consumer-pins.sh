@@ -207,13 +207,27 @@ if [[ -n "$EXPECTED" ]]; then
   done
   [[ "$rc" -eq 0 ]] && echo "OK: all consumers pin NCP $EXPECTED"
 else
+  # Agreement mode: consumers must be WIRE-compatible, not on the identical patch tag.
+  # Since v0.4, additive changes are non-breaking (a patch bump does NOT force a fleet
+  # re-pin — see NCP VERSIONING.md), so v0.4.0 and v0.4.1 consumers interoperate. We
+  # require all to share the same wire (vMAJOR.MINOR); a patch difference is a note,
+  # not a failure. (Pass an explicit expected-tag for a strict coordinated-re-pin check.)
+  wire_of() { sed -E 's/^v?([0-9]+\.[0-9]+).*$/\1/' <<<"$1"; }
   if [[ "${#concrete_tags[@]}" -gt 0 ]]; then
     uniq_tags="$(printf '%s\n' "${concrete_tags[@]}" | sort -u)"
-    n_uniq="$(printf '%s\n' "$uniq_tags" | grep -c . || true)"
-    if [[ "$n_uniq" -gt 1 ]]; then
-      problems+=("consumers disagree; tags seen: $(printf '%s ' $uniq_tags)"); rc=1
+    wires=(); for t in "${concrete_tags[@]}"; do wires+=("$(wire_of "$t")"); done
+    uniq_wires="$(printf '%s\n' "${wires[@]}" | sort -u)"
+    n_wires="$(printf '%s\n' "$uniq_wires" | grep -c . || true)"
+    if [[ "$n_wires" -gt 1 ]]; then
+      problems+=("consumers are on INCOMPATIBLE wires: $(printf '%s ' $uniq_wires) (tags: $(printf '%s ' $uniq_tags))"); rc=1
     elif [[ "$rc" -eq 0 ]]; then
-      echo "OK: all consumers agree on NCP ${concrete_tags[0]}"
+      n_uniq="$(printf '%s\n' "$uniq_tags" | grep -c . || true)"
+      if [[ "$n_uniq" -gt 1 ]]; then
+        echo "OK: all consumers are wire-compatible (wire ${uniq_wires}); patch tags differ: $(printf '%s ' $uniq_tags)"
+        echo "    (additive changes are non-breaking since v0.4 — a patch bump does not force a re-pin)"
+      else
+        echo "OK: all consumers pin NCP ${concrete_tags[0]}"
+      fi
     fi
   fi
 fi
