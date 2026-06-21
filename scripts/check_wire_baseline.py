@@ -171,11 +171,15 @@ def freeze(dest: Path) -> int:
     (dest / "wire_manifest.json").write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
     # Audit snapshot: the exact schemas + golden vectors this baseline distills, so the
     # frozen wire is human-auditable, not just a derived manifest.
+    # Snapshot the load-bearing wire artifacts only. Exclude README.md: a directory's
+    # README has ../-relative links that are dead from inside the snapshot, and its
+    # prose version goes stale against the frozen index.json — it is not part of the
+    # wire and only adds rot to the immutable baseline.
     for sub, src in (("schemas", SCHEMAS), ("vectors", GOLDEN_VECTORS)):
         out = dest / sub
         if out.exists():
             shutil.rmtree(out)
-        shutil.copytree(src, out)
+        shutil.copytree(src, out, ignore=shutil.ignore_patterns("README.md"))
     print(
         f"FROZE wire baseline {manifest['ncp_version']} (hash {manifest['contract_hash']}) "
         f"-> {dest.relative_to(REPO)} : {len(manifest['kinds'])} kinds, {len(manifest['enums'])} enums"

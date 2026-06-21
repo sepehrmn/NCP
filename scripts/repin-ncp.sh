@@ -123,10 +123,7 @@ for desc in "${descriptors[@]}"; do
   fi
 
   # 2) Standard cargo re-pin.
-  # `${arr[@]+"${arr[@]}"}` expands to nothing for an EMPTY array — bash 3.2 (macOS)
-  # errors on a bare `"${empty[@]}"` under `set -u`, so a consumer that declares only
-  # npm (or only cargo) must not abort the whole run.
-  for rel in ${cargo_tomls[@]+"${cargo_tomls[@]}"}; do
+  for rel in "${cargo_tomls[@]}"; do
     f="$consumer_dir/$rel"
     if [[ -f "$f" ]]; then
       repin_cargo_manifest "$f"; note "rewrote ncp-core/ncp-zenoh tag -> $TAG in $rel"; touched=1; review_files+=("$rel")
@@ -139,9 +136,8 @@ for desc in "${descriptors[@]}"; do
     else warn "declared cargo_tag file missing: $f"; fi
   done
 
-  # 3) Standard npm/bun re-pin. (Same bash-3.2 empty-array guard as the cargo loop —
-  # a cargo-only consumer like pid_vla has no npm_jsons and must not abort here.)
-  for rel in ${npm_jsons[@]+"${npm_jsons[@]}"}; do
+  # 3) Standard npm/bun re-pin.
+  for rel in "${npm_jsons[@]}"; do
     f="$consumer_dir/$rel"
     if [[ -f "$f" ]]; then
       repin_package_json "$f"; note "rewrote @scope/ncp pin -> #$TAG in $rel (key kept)"; touched=1; review_files+=("$rel")
