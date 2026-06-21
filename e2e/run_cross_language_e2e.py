@@ -37,6 +37,14 @@ from pathlib import Path
 NCP_ROOT = Path(__file__).resolve().parents[1]
 
 
+def _wire_version() -> str:
+    """The current wire version, read from the behavior corpus (the single
+    cross-language source of wire truth) so this runner tracks the wire across a
+    bump instead of hardcoding a literal that goes stale on the next cut."""
+    corpus = NCP_ROOT / "conformance" / "behavior" / "vectors.json"
+    return json.loads(corpus.read_text())["ncp_version"]
+
+
 def _free_port() -> int:
     s = socket.socket()
     s.bind(("127.0.0.1", 0))
@@ -58,7 +66,7 @@ def _wait_listen(port: int, proc: subprocess.Popen, tries: int = 60) -> None:
     raise RuntimeError("server did not start listening")
 
 
-def _python_client(port: int) -> bool:
+def _python_client(port: int, wire: str) -> bool:
     """A Python NCP client: open -> step -> close over the socket, asserting contract."""
     with socket.create_connection(("127.0.0.1", port), timeout=2) as c:
         f = c.makefile("r")
@@ -67,14 +75,14 @@ def _python_client(port: int) -> bool:
             c.sendall((json.dumps(msg) + "\n").encode())
             return json.loads(f.readline())
 
-        opened = rpc({"kind": "open_session", "ncp_version": "0.4", "session_id": "py-cli",
+        opened = rpc({"kind": "open_session", "ncp_version": wire, "session_id": "py-cli",
                       "network": {"kind": "builtin", "ref": "iaf_psc_alpha"}})
         ok = (opened.get("kind") == "session_opened" and opened.get("ok") is True
               and opened["provenance"]["is_simulation_output"] is True
               and opened["provenance"]["calibrated_posterior"] is False)
-        obs = rpc({"kind": "step_request", "ncp_version": "0.4", "session_id": "py-cli", "advance_ms": 10.0})
+        obs = rpc({"kind": "step_request", "ncp_version": wire, "session_id": "py-cli", "advance_ms": 10.0})
         ok = ok and obs.get("kind") == "observation_frame" and obs["is_simulation_output"] is True
-        closed = rpc({"kind": "close_session", "ncp_version": "0.4", "session_id": "py-cli"})
+        closed = rpc({"kind": "close_session", "ncp_version": wire, "session_id": "py-cli"})
         ok = ok and closed.get("ok") is True
         return ok
 
@@ -109,11 +117,12 @@ def main() -> int:
                             "--backend", "mock", "--port", str(port)],
                            cwd=str(engram), stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
     results: dict[str, bool] = {}
+    wire = _wire_version()
     try:
         _wait_listen(port, srv)
         # Python client
         try:
-            results["python"] = _python_client(port)
+            results["python"] = _python_client(port, wire)
         except Exception as exc:  # noqa: BLE001
             print(f"python client error: {exc}")
             results["python"] = False
