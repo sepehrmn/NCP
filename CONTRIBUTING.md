@@ -132,6 +132,29 @@ coherence** CI job runs it on every PR and on tag pushes. Before bumping
 downstream pins, run `scripts/check-consumer-pins.sh` from a full local tree to
 confirm every consumer agrees on the target tag.
 
+### Release runbook (run BEFORE you cut the tag)
+
+A tag is immutable, so everything must be green *before* it exists — never tag, then
+fix, then move. The exact pre-tag sequence:
+
+1. **Bump every version site together** to the target `X.Y.Z`: `Cargo.toml`
+   (`[workspace.package]` + the path-dep `version=`), `package.json`,
+   `ncp-ts/package.json`, `CITATION.cff`, and the `README.md` pins/bibtex.
+2. **Bump the wire constants together** *only if the wire changed*: `NCP_VERSION`
+   in **both** `ncp-core/src/messages.rs` and `ncp-ts/src/client.ts` (the
+   coherence guard checks they agree — this is the skew that shipped once);
+   recompute/update `CONTRACT_HASH` if the proto's wire-semantic content changed.
+3. **Regenerate everything**: `bun run regen` (ts bindings + dist) and
+   `cargo run -p ncp-core --features schema --bin gen-schemas` (schemas).
+4. **Run the full gate** — `scripts/check.sh` — plus `scripts/check-version-coherence.sh`
+   and (from a full local tree) `scripts/check-consumer-pins.sh`. All must be green.
+5. **Only now** cut the annotated tag at that commit and push it. If anything is
+   wrong, fix it and bump to the next patch — **do not move the tag**.
+
+Patch releases (docs/tests/additive, wire unchanged) do **not** require a consumer
+re-pin: by the versioning policy, same-`MAJOR.MINOR` peers interoperate, and
+`check-consumer-pins.sh` treats a patch difference as compatible.
+
 ## Project-agnostic rule
 
 The SDK must stay **project- and vendor-neutral**. Do not introduce

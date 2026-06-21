@@ -100,6 +100,27 @@ your Zenoh version (authoritative: the zenoh.io configuration docs) before relyi
 on it. Live mTLS deployment validation is the remaining P0 item on
 [#7](https://github.com/sepahead/NCP/issues/7).
 
+### P0 closure checklist (reproducible)
+
+Run this against a *live* mTLS+ACL realm to close P0. Each step states the command
+and the **required** outcome; a deployment is P0-validated only when all four hold.
+(Substitute your endpoint/cert paths; uses the Zenoh CLI examples `z_put`/`z_sub`.)
+
+| # | As identity (client cert CN) | Action | Required outcome |
+|---|---|---|---|
+| 1 | `engram-service` | `z_put -k "<realm>/session/s1/command/x" -v '…'` (with engram cert) | **ACCEPT** — the commander may publish commands |
+| 2 | `robot-1` / `observer-1` | `z_put -k "<realm>/session/s1/command/x"` (with that cert) | **REJECT** — only the commander may write the action plane |
+| 3 | `robot-1` | `z_put -k "<realm>/session/s1/sensor/x"` (with robot cert) | **ACCEPT** — the plant may publish perception |
+| 4 | `engram-service` / `observer-1` | `z_put -k "<realm>/session/s1/sensor/x"` | **REJECT** — only the plant may write the perception plane |
+
+Also confirm: a peer presenting **no** client cert (or a CN not in the ACL `subjects`)
+is refused at the mTLS layer before any ACL check (connection rejected, not just the
+PUT). Record the four outcomes + the no-cert refusal as the P0 evidence; until that
+evidence exists, the `SECURITY.md` "closed realm only" guidance stands. The ACL template
+itself is CI-guarded for valid tokens + the command/sensor PUT-authority invariants by
+[`scripts/check_acl_template.py`](scripts/check_acl_template.py), so a template
+regression is caught even though the *live* enforcement test needs a real deployment.
+
 ## Supported versions
 
 The protocol is pre-1.0. Security fixes target the latest released version.
