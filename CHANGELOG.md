@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Live cross-process / cross-language end-to-end tests (`e2e/`).** Proves the wire
+  contract flows across a real process + language boundary over a real transport —
+  **without NEST or `zenoh-python`** (the backend is separable from the contract;
+  engram's NEST-free `MockBackend` emits real `Observation` frames):
+  - `ncp-zenoh/tests/cross_session_rpc.rs` — two **independent Zenoh sessions** over a
+    real tcp link (multicast off) drive the full `open→step→run→close` RPC through the
+    typed `ZenohNcpClient` (incl. the version + advisory-contract handshake), asserting
+    the scientific-boundary discriminators survive the **production** medium. Gates via
+    `cargo test`.
+  - `ncp-core/examples/ncp_tcp_client.rs` + `e2e/run_cross_language_e2e.py` — a **Rust**
+    client drives the **real Python** engram server (`bridge_server --backend mock`)
+    over a localhost-TCP socket, proving a crebain/pid_vla-style Rust peer interoperates
+    with the Python server across a genuine process + language boundary.
+  - (engram side) a cross-process pytest spawns the real `SessionService` as a separate
+    process and asserts the lifecycle + **forward/backward compatibility** (unknown
+    future field accepted, omitted optionals defaulted) — the additive,
+    non-breaking-evolution guarantee, complementing the `buf breaking` wire gate.
+
 ### Documentation
 
 - **NEST chunking / calibration / GIL / MUSIC, documented and source-verified.**
