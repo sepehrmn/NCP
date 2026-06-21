@@ -28,6 +28,21 @@ export declare const NCP_CONTRACT_HASH = "2cf0763ad61e4f1c";
  *  `ncp_core::contract_status` — never throws; `null` = match or not advertised, a
  *  string = an advisory message describing the mismatch (for logging/telemetry). */
 export declare function contractStatus(peerHash: string | null | undefined): string | null;
+/** Thrown when a peer's `ncp_version` is unparseable or incompatible (the HARD
+ *  compatibility gate — distinct from the advisory contract-hash check). */
+export declare class NcpVersionError extends Error {
+}
+/**
+ * The HARD wire-compatibility gate — `true` if `version` can speak our wire.
+ * Mirrors `ncp_core::check_version` exactly so the TS peer accepts/rejects the same
+ * versions as the Rust/Python/C++ peers: for a pre-1.0 wire (major 0) the protocol
+ * has no stability guarantee, so BOTH major and minor must match (`0.3 ≠ 0.4`); for
+ * a stable wire (major ≥ 1) the major alone decides. An unparseable version always
+ * throws [`NcpVersionError`]; an incompatible-but-parseable version throws when
+ * `strict`, else returns `false`. This is the gate `contractStatus` is explicitly
+ * NOT — the contract hash is advisory; the version is fail-closed.
+ */
+export declare function checkVersion(version: string, strict?: boolean): boolean;
 /** Thrown when a frame violates the NCP scientific-boundary discriminators. */
 export declare class NcpScientificBoundaryError extends Error {
 }

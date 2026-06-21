@@ -50,6 +50,54 @@ export function contractStatus(peerHash: string | null | undefined): string | nu
   )
 }
 
+/** Thrown when a peer's `ncp_version` is unparseable or incompatible (the HARD
+ *  compatibility gate — distinct from the advisory contract-hash check). */
+export class NcpVersionError extends Error {}
+
+/** Parse a wire version into `[major, minor]`, mirroring `ncp_core::check_version`'s
+ *  parser: 1 or 2 dot-separated base-10 components, no trailing junk, no third
+ *  component (semver patch is not part of the wire id). A missing minor ("1") is
+ *  minor 0; anything else throws — never silently coerced to 0 (that would turn the
+ *  fail-closed guard fail-open the moment our own minor is 0). */
+function parseMajorMinor(version: string): [number, number] {
+  const fail = (): never => {
+    throw new NcpVersionError(`unparseable ncp_version ${JSON.stringify(version)}`)
+  }
+  const parts = version.split('.')
+  if (parts.length < 1 || parts.length > 2) fail()
+  const part = (s: string | undefined): number => {
+    // Base-10 non-negative integer only — reject empty/undefined, signs, whitespace,
+    // junk (matches Rust's `u64::parse`, which `check_version` rejects, not coerces).
+    if (s === undefined || !/^[0-9]+$/.test(s) || !Number.isSafeInteger(Number(s))) return fail()
+    return Number(s)
+  }
+  return [part(parts[0]), parts.length === 2 ? part(parts[1]) : 0]
+}
+
+/**
+ * The HARD wire-compatibility gate — `true` if `version` can speak our wire.
+ * Mirrors `ncp_core::check_version` exactly so the TS peer accepts/rejects the same
+ * versions as the Rust/Python/C++ peers: for a pre-1.0 wire (major 0) the protocol
+ * has no stability guarantee, so BOTH major and minor must match (`0.3 ≠ 0.4`); for
+ * a stable wire (major ≥ 1) the major alone decides. An unparseable version always
+ * throws [`NcpVersionError`]; an incompatible-but-parseable version throws when
+ * `strict`, else returns `false`. This is the gate `contractStatus` is explicitly
+ * NOT — the contract hash is advisory; the version is fail-closed.
+ */
+export function checkVersion(version: string, strict = false): boolean {
+  const [gotMajor, gotMinor] = parseMajorMinor(version)
+  const [wantMajor, wantMinor] = parseMajorMinor(NCP_VERSION)
+  const compatible =
+    wantMajor === 0 ? gotMajor === wantMajor && gotMinor === wantMinor : gotMajor === wantMajor
+  if (!compatible) {
+    if (strict) {
+      throw new NcpVersionError(`NCP version mismatch: got ${version}, want ${NCP_VERSION}`)
+    }
+    return false
+  }
+  return true
+}
+
 /** Thrown when a frame violates the NCP scientific-boundary discriminators. */
 export class NcpScientificBoundaryError extends Error {}
 

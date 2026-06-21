@@ -9,6 +9,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Cross-language behavioral parity (all four peers).** All four SDK peers now replay
+  the shared decision corpus (`conformance/behavior/vectors.json`), so a divergence in
+  any one peer's decision logic fails CI:
+  - **TypeScript gained the hard version gate.** `ncp-ts` previously stamped
+    `ncp_version` on every request but had no way to *check* one. Added `checkVersion()`
+    + `NcpVersionError`, mirroring `ncp_core::check_version` exactly (pre-1.0 requires an
+    exact `major.minor` match; strict throws; an unparseable version always throws). So
+    TS now honours the same handshake principles as the Rust/Python/C++ peers
+    (version gate + advisory contract hash + scientific boundary).
+  - **C++ behavioral runner.** `ncp-cpp/tests/behavior_corpus.rs` drives the full corpus
+    through the C ABI (`ncp_check_version`/`ncp_contract_status`/`ncp_validate`/
+    `ncp_govern`); gates via `cargo test`.
+  - **TS behavioral runner.** `ncp-ts/scripts/check-behavior.mjs` replays the subset the
+    thin client implements (checkVersion/contractStatus/scientific-boundary) and
+    fail-loud-lists `govern` + required-field `validate` as out-of-scope; gates in the
+    `ts-dist` CI job. Wire `0.4` unchanged (additive; rebuilt `ncp-ts/dist`).
+
 - **Behavioral conformance corpus.** `conformance/behavior/vectors.json` is a
   language-neutral `{function, input, expect}` decision corpus that pins *runtime
   behavior* (not just wire shape): `check_version` accept/reject/raise, `contract_status`

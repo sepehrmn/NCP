@@ -16,6 +16,8 @@ export {
   NeuroSimClient,
   NCP_VERSION,
   NCP_CONTRACT_HASH,
+  checkVersion,
+  NcpVersionError,
   contractStatus,
   assertScientificBoundary,
   NcpScientificBoundaryError,

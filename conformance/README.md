@@ -40,13 +40,22 @@ behavior/vectors.json language-neutral {function, input, expect} decision vector
 
 ## How the peers consume it (behavior — `behavior/vectors.json`)
 
+All four SDK peers replay the SAME corpus, so a divergence in any one peer's decision
+logic fails CI here:
+
 - **Rust** — `ncp-core/tests/behavior_conformance.rs` drives every vector through the
   real `ncp_core` functions and asserts the declared outcome, so the corpus can never
   claim a decision the reference does not make. Gates in CI via `cargo test`.
+- **C++** — `ncp-cpp/tests/behavior_corpus.rs` drives the full corpus through the C ABI
+  (`ncp_check_version` / `ncp_contract_status` / `ncp_validate` / `ncp_govern`). Gates
+  in CI via `cargo test`.
 - **Python** — `scripts/check_behavior_vectors.py` replays the identical corpus through
-  the `ncp` PyO3 binding (`check_version` / `contract_status` / `validate` / `govern`).
-  It skips with exit 0 when the binding is not built (maturin is not yet in CI — see
-  `ROADMAP.md`); the Rust half gates regardless.
+  the `ncp` PyO3 binding. It skips with exit 0 when the binding is not built (maturin is
+  not yet in CI — see `ROADMAP.md`); the Rust/C++ halves gate regardless.
+- **TypeScript** — `ncp-ts/scripts/check-behavior.mjs` replays the subset the thin
+  client implements — `checkVersion`, `contractStatus`, and the scientific-boundary
+  discriminators — and fail-loud-lists `govern` + required-field `validate` as
+  out-of-scope (owned by the full peers). Gates in the `ts-dist` CI job.
 
 Run the whole matrix with `scripts/check.sh` (it invokes `check_conformance_vectors.py`
 for the wire vectors and `check_behavior_vectors.py` for the behavioral corpus).

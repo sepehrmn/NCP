@@ -8,6 +8,6 @@
  * wire-identical. Do not re-declare these types downstream — import them from here.
  */
 // Client orchestration, JSON-wire helpers, and the WebSocket transport.
-export { NeuroSimClient, NCP_VERSION, NCP_CONTRACT_HASH, contractStatus, assertScientificBoundary, NcpScientificBoundaryError, } from './client';
+export { NeuroSimClient, NCP_VERSION, NCP_CONTRACT_HASH, checkVersion, NcpVersionError, contractStatus, assertScientificBoundary, NcpScientificBoundaryError, } from './client';
 export { WebSocketNeuroSim } from './ws';
 //# sourceMappingURL=index.js.map

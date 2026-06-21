@@ -143,6 +143,13 @@ jobs:
         run: bun run build
       - name: dist must match the committed build
         run: git diff --exit-code -- ncp-ts/dist
+      # Behavioral parity: replay the shared decision corpus
+      # (conformance/behavior/vectors.json) through the freshly-built TS peer, so
+      # ncp-ts's checkVersion / contractStatus / scientific-boundary decisions are
+      # pinned to the same outcomes as the Rust/Python/C++ peers. Read-only (does not
+      # mutate dist, so it cannot trip the diff gate above).
+      - name: TS behavioral conformance
+        run: bun run check:behavior
 
   version-coherence:
     name: version coherence
