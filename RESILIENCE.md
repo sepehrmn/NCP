@@ -95,45 +95,11 @@ on fresh in-bounds data; a geofence breach, NaN position, or sustained link burs
 **latches** `ESTOP` (cleared only by a supervisor `reset()`); a limit referencing an
 undeclared channel is a `config_fail_closed` HOLD that `reset()` does **not** clear:
 
-```mermaid
-stateDiagram-v2
-    direction TB
-
-    Active : ▶ ACTIVE
-    Hold : ⏸ HOLD (non-latching)
-    Estop : ■ ESTOP ⏻ (latched · reset() only)
-    ConfigFailClosed : ⚠ CONFIG-FAIL-CLOSED (reset() does NOT clear)
-
-    [*] --> Active
-    Active --> Active: fresh sensor → clamp speed + truncate horizon near fence
-    Active --> Hold: stale/missing sensor · non-finite clock/velocity · bad timeout · geofence channel absent
-    Hold --> Active: fresh in-bounds data — self-clears (non-latching)
-    Active --> Estop: geofence breach · non-finite position · link-loss burst
-    Hold --> Estop: geofence breach · link-loss burst
-    Estop --> Estop: latched — every CommandFrame zeroed
-    Estop --> Active: supervisor reset() then in-bounds
-    Active --> ConfigFailClosed: a limit references an undeclared channel
-    ConfigFailClosed --> ConfigFailClosed: HOLD frame · safety_ok=false · reset() does NOT clear
-
-    note right of Estop
-        LATCHED — exits only via supervisor reset().
-        Same zeroed frame as HOLD, but de-energized until reset.
-    end note
-    note left of ConfigFailClosed
-        Same actuation as HOLD (zeroed frame) BUT safety_ok=false
-        and permanent for the session — reset() does NOT clear it.
-    end note
-
-    classDef active     fill:#009E73,color:#0B0F14,stroke:#0B3D2E,stroke-width:2px;
-    classDef hold       fill:#E69F00,color:#0B0F14,stroke:#7A5300,stroke-width:2px;
-    classDef estop      fill:#D55E00,color:#0B0F14,stroke:#FFD9C2,stroke-width:4px;
-    classDef failclosed fill:#CC79A7,color:#0B0F14,stroke:#5A2E49,stroke-width:3px,stroke-dasharray:5 3;
-
-    class Active active
-    class Hold hold
-    class Estop estop
-    class ConfigFailClosed failclosed
-```
+<picture>
+  <source media="(prefers-color-scheme: dark)"  srcset="docs/diagrams/fsm-dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="docs/diagrams/fsm-light.svg">
+  <img alt="NCP plant-side safety governor finite state machine. Four states: ACTIVE (nominal — clamps speed and truncates the predictive horizon near the geofence), HOLD (non-latching — self-clears on fresh in-bounds data), ESTOP (latched and de-energized — exits only via a supervisor reset(); the emphasized vermillion glowing state with corner lock-ticks), and CONFIG-FAIL-CLOSED (a limit cites an undeclared channel; permanent for the session, safety_ok=false, reset() does not clear it). Transitions: INIT to ACTIVE; ACTIVE self-loops on a fresh sensor; ACTIVE to HOLD on a stale or missing sensor, non-finite clock or velocity, bad timeout, or absent geofence channel; HOLD back to ACTIVE on fresh in-bounds data; ACTIVE and HOLD both latch to ESTOP on a geofence breach, non-finite position, or link-loss burst (the heaviest strokes); ESTOP self-loops while latched with every CommandFrame zeroed, returning to ACTIVE only after a supervisor reset() with the plant in bounds; ACTIVE enters CONFIG-FAIL-CLOSED when a limit references an undeclared channel, then self-loops. Invariant: HOLD, ESTOP, and CONFIG-FAIL-CLOSED all emit a ZEROED command frame — fail-safe to zero, not latch-last." src="docs/diagrams/fsm-light.svg" width="820">
+</picture>
 
 **The hard PHY boundary, stated plainly:** no application-layer scheme — not PPC,
 not duplication, not coding — recovers data when a wideband jammer drives delivered

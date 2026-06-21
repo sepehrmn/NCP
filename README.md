@@ -20,39 +20,11 @@ NCP is a versioned, transport-agnostic wire contract that lets a running NEST ne
 
 One commander (e.g. an Engram/NEST brain, or any neuromorphic controller) coordinates one or more bodies over four QoS planes, each carrying the reliability, priority, and conflation its job needs.
 
-```mermaid
-flowchart LR
-    subgraph Commander["Commander · e.g. an Engram / NEST brain"]
-        BRAIN("`🧠 NEST brain<br/>**the commander**<br/>point + rate neurons`")
-    end
-    subgraph Plant["Body / plant"]
-        ROBOT("🤖 robot / UAV body")
-    end
-    OBS("`👁 analysis /<br/>observer client<br/>**attaches for free**`")
-
-    BRAIN ==>|"🔒 ACTION · /command<br/>express · RealTime · safety-gated<br/>mode {init·active·hold·estop} · ttl_ms"| ROBOT
-    BRAIN -->|"🛂 CONTROL · /rpc<br/>reliable · request / reply"| ROBOT
-    ROBOT -.->|"📡 PERCEPTION · /sensor<br/>best-effort · DROP · lossy-OK"| BRAIN
-    BRAIN -.->|"👁 OBSERVATION · /observation<br/>read-only tap"| OBS
-    ROBOT -.-> OBS
-
-    class BRAIN commander
-    class ROBOT body
-    class OBS observer
-
-    linkStyle default stroke:#8B949E,stroke-width:1.5px;
-    linkStyle 0 stroke:#D55E00,stroke-width:4px;
-    linkStyle 1 stroke:#0072B2,stroke-width:2.5px;
-    linkStyle 2 stroke:#56B4E9,stroke-width:2.5px;
-    linkStyle 3 stroke:#8B949E,stroke-width:1.5px,stroke-dasharray:3 3;
-    linkStyle 4 stroke:#8B949E,stroke-width:1.5px,stroke-dasharray:3 3;
-
-    classDef commander fill:#1F2A37,color:#FFFFFF,stroke:#9DA7B3,stroke-width:2px;
-    classDef body      fill:#6E7681,color:#FFFFFF,stroke:#C9D1D9,stroke-width:2px;
-    classDef observer  fill:#586069,color:#FFFFFF,stroke:#C9D1D9,stroke-width:1.5px,stroke-dasharray:4 3;
-    style Commander fill:none,stroke:#9DA7B3,stroke-width:1px,stroke-dasharray:5 4
-    style Plant fill:none,stroke:#9DA7B3,stroke-width:1px,stroke-dasharray:5 4
-```
+<picture>
+  <source media="(prefers-color-scheme: dark)"  srcset="docs/diagrams/topology-dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="docs/diagrams/topology-light.svg">
+  <img alt="NCP topology: one Commander (a NEST-brain neuromorphic controller, U1) coordinates one Body/plant (robot or UAV, U2) over four QoS planes, plus a read-only Observer client (O1) that attaches for free. The safety-gated ACTION plane is the focal element — the heaviest, brightest vermillion trace running dead-center from Commander to Body, carrying {realm}/session/{id}/command[/{name}] as express, RealTime, safety-gated traffic with a visible mode enum (init, active, hold, estop — estop flagged danger-red) and a ttl_ms HOLD fail-safe. CONTROL ({realm}/rpc) is a reliable, bidirectional request/reply rail (queryable). PERCEPTION ({realm}/session/{id}/sensor[/{name}]) is a dashed best-effort DROP plane from Body to Commander. OBSERVATION ({realm}/session/{id}/observation) is a dotted read-only tap published by both Commander and Body to the Observer. NCP wire 0.5, contract hash 24e8e6e31e1dec8a." src="docs/diagrams/topology-light.svg" width="860">
+</picture>
 
 | Plane | Key | QoS | Purpose |
 |---|---|---|---|
@@ -161,30 +133,11 @@ NCP is the **wire contract only** — it bakes in no consumer. These are the ref
 and example peers that pin it (each re-pins to `tag = v0.5.0`); your own commander,
 body, or analysis client speaks the same wire:
 
-```mermaid
-flowchart TB
-    subgraph Consumers["NCP consumers · all pin tag v0.5.0"]
-        ENGRAM["Engram / Paper2Brain<br/>(example commander: NEST brain + SessionService)"]
-        CREBAIN["crebain<br/>(example body: robot / UAV plant)"]
-        PIDVLA["pid_vla<br/>(example analysis / observer client)"]
-    end
-    NCP["🔑 NCP — the wire contract<br/>ncp-core · ncp-zenoh · ncp-gateway<br/>peers: ncp-python · ncp-cpp · @sepehrmn/ncp (ncp-ts)"]
-    PIDRS["pid-rs<br/>(PID estimators — science library)"]
-
-    ENGRAM --> NCP
-    CREBAIN --> NCP
-    PIDVLA --> NCP
-    PIDVLA -.->|"git submodule · NOT an NCP wire consumer"| PIDRS
-
-    classDef contract  fill:#6D28D9,color:#FFFFFF,stroke:#B9A9E6,stroke-width:3px;
-    classDef structure fill:#D7DCE1,color:#0B0F14,stroke:#57606A,stroke-width:1.5px;
-    class NCP contract;
-    class ENGRAM,CREBAIN,PIDVLA,PIDRS structure;
-    class Consumers structure;
-
-    linkStyle default stroke:#8B949E,stroke-width:1.5px;
-    linkStyle 3 stroke:#57606A,stroke-width:1.5px,stroke-dasharray:6 4;
-```
+<picture>
+  <source media="(prefers-color-scheme: dark)"  srcset="docs/diagrams/ecosystem-dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="docs/diagrams/ecosystem-light.svg">
+  <img alt="NCP ecosystem: a single highlighted NCP wire-contract node at center (crates ncp-core, ncp-zenoh, ncp-gateway; peers ncp-python, ncp-cpp, @sepehrmn/ncp; wire 0.5, contract 24e8e6e3). Three example consumers in a left column each pin tag v0.5.0 to it: Engram/Paper2Brain (example commander), crebain (example body), pid_vla (example observer client). A separate pid-rs node (PID estimators science library) links to pid_vla by a distinct dashed grey edge labelled 'git submodule · NOT an NCP wire consumer' and does not connect to the contract." src="docs/diagrams/ecosystem-light.svg" width="820">
+</picture>
 
 ## FAQ
 

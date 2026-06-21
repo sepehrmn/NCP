@@ -50,35 +50,11 @@ ncp.v0` — naming-only, hash-neutral; the contract handshake became advisory; t
 additive-is-non-breaking policy above was adopted); `0.3` added the `contract_hash`
 handshake field; `0.2` the neuron-family wire (#10) and bulk column codec (#6).
 
-```mermaid
-flowchart TB
-    V["wire 0.4 → 0.5 · string→enum (buf WIRE/WIRE_JSON)<br/>CONTRACT_HASH 2cf0763ad61e4f1c → 24e8e6e31e1dec8a"]
-    H{{"🔑 check_version(peer)<br/>HARD · exact major.minor · fail-closed"}}
-    REJ{{"■ 0.4 ≠ 0.5 → rejected<br/>(fail-closed · Err, NO coerce)"}}
-    OK(["▶ 0.5 → session opens"])
-    ADV["≈ contract_hash diff · ADVISORY<br/>(logged, NOT rejected)"]
-
-    V --> H
-    H -->|"peer 0.4 ≠ 0.5 (exact major.minor)"| REJ
-    H -->|"peer 0.5"| OK
-    OK -.->|"≈ contract_hash diff"| ADV
-
-    linkStyle default stroke:#8B949E,stroke-width:1.5px;
-    linkStyle 1 stroke:#D55E00,stroke-width:3px;
-    linkStyle 2 stroke:#009E73,stroke-width:2px;
-    linkStyle 3 stroke:#999999,stroke-width:1.5px,stroke-dasharray:2 2;
-
-    classDef structure   fill:#D7DCE1,color:#0B0F14,stroke:#57606A,stroke-width:1px;
-    classDef contract    fill:#6D28D9,color:#FFFFFF,stroke:#B9A9E6,stroke-width:3px;
-    classDef estop       fill:#D55E00,color:#0B0F14,stroke:#1B1F24,stroke-width:4px;
-    classDef active      fill:#009E73,color:#0B0F14,stroke:#1B1F24,stroke-width:2px;
-    classDef observation fill:#999999,color:#0B0F14,stroke:#1B1F24,stroke-width:2px,stroke-dasharray:2 2;
-    class V structure
-    class H contract
-    class REJ estop
-    class OK active
-    class ADV observation
-```
+<picture>
+  <source media="(prefers-color-scheme: dark)"  srcset="docs/diagrams/versioning-dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="docs/diagrams/versioning-light.svg">
+  <img alt="NCP version-compatibility handshake. The wire contract breaks from 0.4 to 0.5 (a string-to-enum change under buf WIRE/WIRE_JSON; contract hash 2cf0763ad61e4f1c becomes 24e8e6e31e1dec8a). This feeds a hard compatibility gate, check_version, which requires an exact major.minor match and fails closed. A peer on 0.4 does not equal 0.5 and is rejected fail-closed with an error and no coercion; a peer on 0.5 matches exactly and the session opens (the highlighted green outcome). Separately, off the success path, a contract_hash difference is advisory only — logged, not rejected." src="docs/diagrams/versioning-light.svg" width="820">
+</picture>
 
 ## Enforcement: `buf breaking`
 

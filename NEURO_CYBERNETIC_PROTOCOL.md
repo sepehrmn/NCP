@@ -76,36 +76,11 @@ wire may still change; pin the exact version you build against.
 
 The session lifecycle, with the version (HARD) + contract-hash (ADVISORY) handshake:
 
-```mermaid
-sequenceDiagram
-    autonumber
-    accTitle: NCP session lifecycle
-    accDescr: Client opens a session; the server applies a HARD ncp_version check (exact major.minor, fail-closed) and an ADVISORY contract_hash check (logged on mismatch). If incompatible, SessionOpened ok=false and no session is created. If compatible, SessionOpened ok=true carries provenance (is_simulation_output=true, calibrated_posterior=false), then a per-chunk loop of StepRequest or RunRequest answered by ObservationFrame (same provenance polarities on every frame), then CloseSession and SessionClosed.
-    box rgba(86,180,233,0.12) Client · robot / analysis peer
-        participant C as Client (e.g. a robot / analysis peer)
-    end
-    box rgba(0,114,178,0.12) Server · Engram SessionService
-        participant S as Server (e.g. an Engram SessionService)
-    end
-    C->>S: OpenSession{ ncp_version="0.5", contract_hash, network, record, stimulus, sim }
-    rect rgba(109,40,217,0.16)
-    Note over S: check_version (HARD: exact major.minor, fail-closed)<br/>≈ negotiate() → contract_hash compare (ADVISORY: log on mismatch)
-    alt incompatible ncp_version (HARD gate: 0.4 ≠ 0.5)
-        S-->>C: ✖︎ SessionOpened{ ok=false, error } · NO session (fail-closed)
-    else compatible (0.5 == 0.5)
-        S-->>C: ✔︎ SessionOpened{ ok=true, backend, resolved, provenance, contract_hash }
-        Note over C,S: contract_hash mismatch on this arm = ADVISORY only (logged, session proceeds)<br/>provenance polarities are FIXED invariants: is_simulation_output=true · calibrated_posterior=false
-        rect rgba(215,220,225,0.20)
-        loop per chunk
-            C->>S: StepRequest / RunRequest{ advance_ms|duration_ms, stimulus }
-            S-->>C: ObservationFrame{ seq, records, is_simulation_output=true, calibrated_posterior=false }
-        end
-        end
-        C->>S: CloseSession{ session_id }
-        S-->>C: SessionClosed{ ok=true }
-    end
-    end
-```
+<picture>
+  <source media="(prefers-color-scheme: dark)"  srcset="docs/diagrams/sequence-dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="docs/diagrams/sequence-light.svg">
+  <img alt="NCP session-lifecycle sequence diagram. Two lifelines: CLIENT (commander) and SERVER (sim backend). Three grouped phases top to bottom. OPEN: CLIENT sends OpenSession (ncp_version, contract_hash, network, record, stimulus, sim); SERVER applies a HARD version gate (check_version, exact major.minor, fail-closed) plus an ADVISORY contract_hash compare, then replies SessionOpened — ok=true opens the session (backend, resolved, provenance, contract_hash), ok=false returns an error with no session. STEP/OBSERVE loop, once per chunk: CLIENT sends StepRequest or RunRequest (advance_ms, 0 means use chunk_ms, with a stimulus); SERVER replies ObservationFrame (seq, t, sim_time_ms, records) — the heaviest, glowing vermillion trace, because it asserts two fixed provenance invariants on every frame: is_simulation_output=true and calibrated_posterior=false (the honesty boundary). CLOSE: CLIENT sends CloseSession; SERVER replies SessionClosed ok=true. Wire 0.5, contract hash 24e8e6e31e1dec8a." src="docs/diagrams/sequence-light.svg" width="820">
+</picture>
 
 ## 2. Entity model (perception, action, neither; 0..N of each)
 
