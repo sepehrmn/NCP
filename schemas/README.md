@@ -21,7 +21,7 @@ the committed copy against a fresh export. See the `note` in [`index.json`](inde
 ```
 
 Do not edit a `*.schema.json` by hand — regenerate from the Pydantic source and commit the result.
-[`index.json`](index.json) lists the message set (`ncp_version` `0.2`): `capabilities`,
+[`index.json`](index.json) lists the message set (`ncp_version` `0.3`): `capabilities`,
 `open_session` / `session_opened`, `close_session` / `session_closed`, `run_request`,
 `step_request`, `sensor_frame` / `stimulus_frame` / `observation_frame` / `command_frame`,
 `control_status`, `link_status`.

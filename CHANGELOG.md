@@ -7,7 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Consumer pin tooling is now consumer-agnostic (decoupling).** NCP no longer names
+  or enumerates any consumer. `scripts/check-consumer-pins.sh` and
+  `scripts/repin-ncp.sh` **discover** consumers by globbing siblings for a
+  `.ncp-consumer` descriptor (committed in the consumer's own repo), and CI's
+  consumer-pin step keys off that glob. Onboarding a new consumer now requires **zero
+  NCP-repo changes** — it commits a `.ncp-consumer` to its own repo. Documented in
+  `INTEGRATING.md` §"Registering a consumer"; `CONTRIBUTING.md` / `scripts/README.md`
+  de-named the specific consumers.
+- `ncp-python` now exposes `CONTRACT_HASH` (alongside `NCP_VERSION`) so Python
+  consumers import the canonical hash from the core instead of hardcoding it.
+
 ### Documentation
+
+- Corrected `README.md` / `schemas/README.md`: JSON Schemas are the proto's JSON
+  projection emitted from the reference Pydantic models (not "via buf") and parity-
+  guarded against the proto; `ncp_version` shown as `0.3`. Flagged proto-native schema
+  generation (so NCP owns its own schema source) as a tracked decoupling item.
 
 - Documented `CONTRACT_HASH`: why it is a hardcoded constant (runtime has no proto;
   contract-identity; cross-language anchor; CI-guarded so it cannot drift) plus the

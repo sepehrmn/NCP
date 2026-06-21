@@ -1,19 +1,22 @@
 #!/usr/bin/env bash
-# Report the NCP pin each downstream consumer currently references and verify they
-# agree. READ-ONLY: this script never writes to any repo, runs no builds, and makes
-# no network/git calls — it only inspects pin files on disk. Use it as a pre-flight
-# or CI guard around an NCP tag bump.
+# Report the NCP pin each downstream consumer references and verify they agree.
+# READ-ONLY: never writes to any repo, runs no builds, makes no network/git calls —
+# it only inspects pin files on disk. Use it as a pre-flight or CI guard around an
+# NCP tag bump.
 #
-# Consumers inspected (all siblings of this NCP repo under base-dir):
-#   - crebain/src-tauri/Cargo.toml   ncp-core / ncp-zenoh  git tag
-#   - crebain/src-tauri/Cargo.lock   resolved  NCP?tag=<tag>
-#   - crebain/package.json           "@sepehrmn/ncp": "github:sepahead/NCP#<tag>"
-#   - crebain/bun.lock               same dep spec (#<tag>) + the resolved commit
-#   - pid_vla/crates/ncp-observer/Cargo.toml   ncp-core / ncp-zenoh git tag
-#   - Paper2Brain/ncp/.mirror-ref    vendored-mirror pin
+# DECOUPLED BY DESIGN: this script holds **no knowledge of any specific consumer**.
+# It discovers consumers by globbing for a `.ncp-consumer` descriptor in each
+# sibling repo under base-dir. A consumer registers itself (and declares which of
+# its files carry the NCP pin) by committing that descriptor to its OWN repo —
+# onboarding a new consumer therefore requires ZERO changes here. See
+# `INTEGRATING.md` (§"Registering a consumer") for the descriptor format.
 #
-# The npm scope key "@sepehrmn/ncp" is a deliberate import alias for a
-# github:sepahead/NCP dependency — only the trailing "#<tag>" is the pin.
+# `.ncp-consumer` format — one `<type> <relative-path>` per line, `#` comments:
+#   cargo_tag   <Cargo.toml>     # ncp-core/ncp-zenoh git-dep `tag = "vX"`
+#   cargo_lock  <Cargo.lock>     # resolved `NCP?tag=vX`
+#   npm_tag     <package.json>   # `@sepehrmn/ncp": "github:sepahead/NCP#vX`
+#   npm_lock    <bun.lock>       # same spec `#vX` (+ resolved commit, informational)
+#   mirror_ref  <.mirror-ref>    # a vendored-mirror pin file containing the tag
 #
 # Tracks sepahead/NCP#8 (drift-guarded pins).
 set -euo pipefail
@@ -29,19 +32,14 @@ Usage:
 
   expected-tag   If given, every consumer MUST reference exactly this tag;
                  the script exits non-zero otherwise.
-  base-dir       Directory holding the sibling repos (NCP, crebain, pid_vla,
-                 Paper2Brain). Defaults to the parent of this NCP checkout.
+  base-dir       Directory holding the sibling repos. Defaults to the parent of
+                 this NCP checkout.
 
   With no expected-tag the script only checks the consumers agree with one
   another; it exits non-zero if they disagree.
 
-Consumers inspected:
-  crebain/src-tauri/Cargo.toml   ncp-core / ncp-zenoh git tag
-  crebain/src-tauri/Cargo.lock   resolved NCP?tag=<tag>
-  crebain/package.json           "@sepehrmn/ncp": "github:sepahead/NCP#<tag>"
-  crebain/bun.lock               same dep spec (#<tag>) + the resolved commit
-  pid_vla/crates/ncp-observer/Cargo.toml   ncp-core / ncp-zenoh git tag
-  Paper2Brain/ncp/.mirror-ref    vendored-mirror pin
+Consumers are DISCOVERED, not hardcoded: any sibling dir with a `.ncp-consumer`
+descriptor is inspected. Onboard a consumer by committing that file to its repo.
 
 Exit codes: 0 = ok; 1 = mismatch / missing / unresolved pin; 2 = bad usage.
 EOF
@@ -74,89 +72,83 @@ if [[ ! -d "$BASE_DIR" ]]; then
 fi
 BASE_DIR="$(cd "$BASE_DIR" && pwd)"
 
-# Consumer file locations (relative to BASE_DIR).
-CREBAIN_CARGO_TOML="$BASE_DIR/crebain/src-tauri/Cargo.toml"
-CREBAIN_CARGO_LOCK="$BASE_DIR/crebain/src-tauri/Cargo.lock"
-CREBAIN_PKG_JSON="$BASE_DIR/crebain/package.json"
-CREBAIN_BUN_LOCK="$BASE_DIR/crebain/bun.lock"
-OBSERVER_CARGO_TOML="$BASE_DIR/pid_vla/crates/ncp-observer/Cargo.toml"
-MIRROR_REF="$BASE_DIR/Paper2Brain/ncp/.mirror-ref"
-
 # Parallel arrays describing each (sub-)consumer row: a human label and the tag we
 # extracted (or a sentinel: "__MISSING__" = file absent, "__UNRESOLVED__" = file
 # present but no pin matched).
 LABELS=()
 TAGS=()
+NOTES=()
 
-# add_row LABEL TAG
-add_row() {
-  LABELS+=("$1")
-  TAGS+=("$2")
-}
+add_row() { LABELS+=("$1"); TAGS+=("$2"); }
 
 # Extract the first capture group of a Perl regex from a file, or a sentinel.
 # The regex is passed via the environment so Perl compiles it directly — no need
 # to escape "/" and no shell-injection into the // delimiters. We use Perl (not
 # grep -P) because BSD/macOS grep lacks -P.
-# Args: <file> <perl-regex-with-one-capture-group>
 first_match() {
   local file="$1" re="$2"
   [[ -f "$file" ]] || { printf '%s' "__MISSING__"; return; }
   local out
   out="$(RE="$re" perl -ne 'if (/$ENV{RE}/) { print "$1\n"; exit }' "$file" 2>/dev/null || true)"
-  if [[ -z "$out" ]]; then
-    printf '%s' "__UNRESOLVED__"
-  else
-    printf '%s' "$out"
-  fi
+  if [[ -z "$out" ]]; then printf '%s' "__UNRESOLVED__"; else printf '%s' "$out"; fi
 }
 
-# ---- crebain/src-tauri/Cargo.toml : ncp-core / ncp-zenoh git tag ----
-# e.g.  ncp-core = { git = "https://github.com/sepahead/NCP", tag = "v0.2.6", ... }
-crebain_toml_tag="$(first_match "$CREBAIN_CARGO_TOML" \
-  '^\s*ncp-(?:core|zenoh)\b.*\bgit\s*=\s*"[^"]*/NCP".*\btag\s*=\s*"([^"]+)"')"
-add_row "crebain/src-tauri/Cargo.toml (ncp-core/ncp-zenoh tag)" "$crebain_toml_tag"
+# Per-type pin extraction. Each maps a declared file to the pinned tag (or sentinel).
+extract_pin() {
+  local type="$1" file="$2"
+  case "$type" in
+    cargo_tag)
+      first_match "$file" '^\s*ncp-(?:core|zenoh)\b.*\bgit\s*=\s*"[^"]*/NCP".*\btag\s*=\s*"([^"]+)"' ;;
+    cargo_lock)
+      first_match "$file" 'git\+https://github\.com/[^/]+/NCP\?tag=([^#"]+)' ;;
+    npm_tag|npm_lock)
+      first_match "$file" '"\@[^"/]+/ncp"\s*:\s*"github:[^/]+/NCP#([^"]+)"' ;;
+    mirror_ref)
+      if [[ -f "$file" ]]; then local v; v="$(tr -d '[:space:]' < "$file")"; [[ -n "$v" ]] && printf '%s' "$v" || printf '%s' "__UNRESOLVED__"; else printf '%s' "__MISSING__"; fi ;;
+    *)
+      printf '%s' "__UNRESOLVED__" ;;
+  esac
+}
 
-# ---- crebain/src-tauri/Cargo.lock : resolved NCP?tag=<tag> ----
-crebain_lock_tag="$(first_match "$CREBAIN_CARGO_LOCK" \
-  'git\+https://github\.com/sepahead/NCP\?tag=([^#"]+)')"
-add_row "crebain/src-tauri/Cargo.lock (resolved NCP?tag=)" "$crebain_lock_tag"
+# ---------------------------------------------------------------------------
+# Discover consumers: every sibling dir with a `.ncp-consumer` descriptor.
+# ---------------------------------------------------------------------------
+shopt -s nullglob
+descriptors=("$BASE_DIR"/*/.ncp-consumer)
+shopt -u nullglob
 
-# ---- crebain/package.json : "@sepehrmn/ncp": "github:sepahead/NCP#<tag>" ----
-crebain_pkg_tag="$(first_match "$CREBAIN_PKG_JSON" \
-  '"\@sepehrmn/ncp"\s*:\s*"github:sepahead/NCP#([^"]+)"')"
-add_row "crebain/package.json (@sepehrmn/ncp #tag)" "$crebain_pkg_tag"
-
-# ---- crebain/bun.lock : the spec entry (#<tag>) ----
-# The top spec block carries the human pin: "@sepehrmn/ncp": "github:sepahead/NCP#<tag>".
-# The resolved-package entry uses the form "@sepehrmn/ncp@github:..." (with an
-# extra "@" before "github"), so this spec regex (key followed by ':') will not
-# match it.
-crebain_bun_tag="$(first_match "$CREBAIN_BUN_LOCK" \
-  '"\@sepehrmn/ncp"\s*:\s*"github:sepahead/NCP#([^"]+)"')"
-add_row "crebain/bun.lock (@sepehrmn/ncp spec #tag)" "$crebain_bun_tag"
-
-# bun.lock also records the resolved commit (NCP#<sha>) — informational only; a
-# commit sha is never equal to a tag string, so we surface it as a note rather
-# than a row that must match. Pull it from the resolved entry, not the spec.
-crebain_bun_commit=""
-if [[ -f "$CREBAIN_BUN_LOCK" ]]; then
-  crebain_bun_commit="$(RE='"\@sepehrmn/ncp\@github:sepahead/NCP#([0-9a-f]{7,40})"' \
-    perl -ne 'if (/$ENV{RE}/) { print "$1\n"; exit }' "$CREBAIN_BUN_LOCK" 2>/dev/null || true)"
+if [[ "${#descriptors[@]}" -eq 0 ]]; then
+  echo "No consumers found under $BASE_DIR (no */.ncp-consumer descriptors)." >&2
+  echo "A consumer registers by committing a .ncp-consumer file to its repo root;" >&2
+  echo "see INTEGRATING.md §\"Registering a consumer\"." >&2
+  exit 1
 fi
 
-# ---- pid_vla/crates/ncp-observer/Cargo.toml : ncp-core / ncp-zenoh git tag ----
-observer_tag="$(first_match "$OBSERVER_CARGO_TOML" \
-  '^\s*ncp-(?:core|zenoh)\b.*\bgit\s*=\s*"[^"]*/NCP".*\btag\s*=\s*"([^"]+)"')"
-add_row "pid_vla/crates/ncp-observer/Cargo.toml (ncp-core/ncp-zenoh tag)" "$observer_tag"
-
-# ---- Paper2Brain/ncp/.mirror-ref : vendored mirror pin ----
-mirror_tag="__MISSING__"
-if [[ -f "$MIRROR_REF" ]]; then
-  mirror_tag="$(tr -d '[:space:]' < "$MIRROR_REF")"
-  [[ -n "$mirror_tag" ]] || mirror_tag="__UNRESOLVED__"
-fi
-add_row "Paper2Brain/ncp/.mirror-ref (vendored mirror pin)" "$mirror_tag"
+for desc in "${descriptors[@]}"; do
+  consumer_dir="$(cd "$(dirname "$desc")" && pwd)"
+  consumer_name="$(basename "$consumer_dir")"
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    line="${line%%#*}"                       # strip comments
+    # shellcheck disable=SC2206
+    fields=($line)                           # split on whitespace
+    [[ "${#fields[@]}" -ge 2 ]] || continue
+    type="${fields[0]}"; rel="${fields[1]}"
+    # Only pin-bearing types are checked here; directives like `repin_cmd` (used by
+    # repin-ncp.sh) are not pins and are skipped.
+    case "$type" in
+      cargo_tag|cargo_lock|npm_tag|npm_lock|mirror_ref) ;;
+      *) continue ;;
+    esac
+    file="$consumer_dir/$rel"
+    tag="$(extract_pin "$type" "$file")"
+    add_row "$consumer_name/$rel ($type)" "$tag"
+    # bun.lock also records the resolved commit (NCP#<sha>) — informational only.
+    if [[ "$type" == "npm_lock" && -f "$file" ]]; then
+      commit="$(RE='/NCP#([0-9a-f]{7,40})"' perl -ne 'if (/$ENV{RE}/) { print "$1\n"; exit }' "$file" 2>/dev/null || true)"
+      [[ -n "$commit" ]] && NOTES+=("$consumer_name/$rel resolved commit = $commit (informational)")
+    fi
+  done < "$desc"
+done
 
 # ---------------------------------------------------------------------------
 # Render the table.
@@ -169,11 +161,8 @@ render_tag() {
   esac
 }
 
-# Column width for the label column.
 maxw=0
-for l in "${LABELS[@]}"; do
-  (( ${#l} > maxw )) && maxw=${#l}
-done
+for l in "${LABELS[@]}"; do (( ${#l} > maxw )) && maxw=${#l}; done
 
 echo "NCP consumer pins (base-dir: $BASE_DIR)"
 echo
@@ -182,9 +171,9 @@ printf '  %-*s  %s\n' "$maxw" "$(printf '%.0s-' $(seq 1 "$maxw"))" "------------
 for i in "${!LABELS[@]}"; do
   printf '  %-*s  %s\n' "$maxw" "${LABELS[$i]}" "$(render_tag "${TAGS[$i]}")"
 done
-if [[ -n "$crebain_bun_commit" ]]; then
+if [[ "${#NOTES[@]}" -gt 0 ]]; then
   echo
-  printf '  note: crebain/bun.lock resolved commit = %s (informational)\n' "$crebain_bun_commit"
+  for n in "${NOTES[@]}"; do printf '  note: %s\n' "$n"; done
 fi
 echo
 
@@ -194,53 +183,35 @@ echo
 rc=0
 problems=()
 
-# Any unresolved/missing pin is always a failure.
 for i in "${!LABELS[@]}"; do
   case "${TAGS[$i]}" in
-    __MISSING__)
-      problems+=("${LABELS[$i]}: file not found")
-      rc=1 ;;
-    __UNRESOLVED__)
-      problems+=("${LABELS[$i]}: file present but no NCP pin matched")
-      rc=1 ;;
+    __MISSING__)    problems+=("${LABELS[$i]}: file not found"); rc=1 ;;
+    __UNRESOLVED__) problems+=("${LABELS[$i]}: file present but no NCP pin matched"); rc=1 ;;
   esac
 done
 
-# Collect the set of concrete (resolved) tags actually seen.
 concrete_tags=()
 for t in "${TAGS[@]}"; do
-  case "$t" in
-    __MISSING__|__UNRESOLVED__) : ;;
-    *) concrete_tags+=("$t") ;;
-  esac
+  case "$t" in __MISSING__|__UNRESOLVED__) : ;; *) concrete_tags+=("$t") ;; esac
 done
 
 if [[ -n "$EXPECTED" ]]; then
-  # Strict mode: every resolved consumer must equal EXPECTED.
   for i in "${!LABELS[@]}"; do
     case "${TAGS[$i]}" in
-      __MISSING__|__UNRESOLVED__) : ;; # already reported above
+      __MISSING__|__UNRESOLVED__) : ;;
       *)
         if [[ "${TAGS[$i]}" != "$EXPECTED" ]]; then
-          problems+=("${LABELS[$i]}: pinned to '${TAGS[$i]}', expected '$EXPECTED'")
-          rc=1
+          problems+=("${LABELS[$i]}: pinned to '${TAGS[$i]}', expected '$EXPECTED'"); rc=1
         fi ;;
     esac
   done
-  if [[ "$rc" -eq 0 ]]; then
-    echo "OK: all consumers pin NCP $EXPECTED"
-  fi
+  [[ "$rc" -eq 0 ]] && echo "OK: all consumers pin NCP $EXPECTED"
 else
-  # Agreement mode: all resolved consumers must share one tag.
-  if [[ "${#concrete_tags[@]}" -eq 0 ]]; then
-    # No resolvable pin anywhere — nothing to agree on (failures already noted).
-    :
-  else
+  if [[ "${#concrete_tags[@]}" -gt 0 ]]; then
     uniq_tags="$(printf '%s\n' "${concrete_tags[@]}" | sort -u)"
     n_uniq="$(printf '%s\n' "$uniq_tags" | grep -c . || true)"
     if [[ "$n_uniq" -gt 1 ]]; then
-      problems+=("consumers disagree; tags seen: $(printf '%s ' $uniq_tags)")
-      rc=1
+      problems+=("consumers disagree; tags seen: $(printf '%s ' $uniq_tags)"); rc=1
     elif [[ "$rc" -eq 0 ]]; then
       echo "OK: all consumers agree on NCP ${concrete_tags[0]}"
     fi
@@ -249,18 +220,11 @@ fi
 
 if [[ "$rc" -ne 0 ]]; then
   echo "MISMATCH:" >&2
-  for p in "${problems[@]}"; do
-    echo "  - $p" >&2
-  done
+  for p in "${problems[@]}"; do echo "  - $p" >&2; done
   echo >&2
-  echo "  To re-pin, bump each consumer's manifest AND its lockfile to the target tag:" >&2
-  echo "    - crebain: edit src-tauri/Cargo.toml + package.json, then re-run" >&2
-  echo "      'cargo update -p ncp-core -p ncp-zenoh --manifest-path src-tauri/Cargo.toml'" >&2
-  echo "      and 'bun install' (package.json + bun.lock must move together)." >&2
-  echo "    - pid_vla: edit crates/ncp-observer/Cargo.toml, then 'cargo update -p ncp-core" >&2
-  echo "      -p ncp-zenoh --manifest-path crates/ncp-observer/Cargo.toml'." >&2
-  echo "    - Paper2Brain: run its own scripts/sync_ncp_mirror.sh <tag>; do NOT hand-edit" >&2
-  echo "      the mirror (engram regenerates ncp/schemas and a drift guard checks it)." >&2
+  echo "  Re-pin each consumer to the target tag (manifest AND lockfile move together)," >&2
+  echo "  then re-run. Each consumer owns its re-pin recipe; see its .ncp-consumer and" >&2
+  echo "  README. Mirror-style consumers run their own sync script (do NOT hand-edit a mirror)." >&2
 fi
 
 exit "$rc"

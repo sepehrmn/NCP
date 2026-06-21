@@ -138,18 +138,19 @@ jobs:
       - name: Version coherence (tag)
         if: startsWith(github.ref, 'refs/tags/')
         run: scripts/check-version-coherence.sh "${GITHUB_REF_NAME}"
-      # check-consumer-pins.sh verifies the downstream consumer repos (crebain,
-      # pid_vla, Paper2Brain) pin a single agreed NCP tag. Those siblings are not
-      # checked out in CI, so run it only if at least one is present; otherwise
-      # inform and skip (it is a release-time guard run from a full local tree).
-      - name: Consumer pin coherence (sibling repos, if present)
+      # check-consumer-pins.sh verifies that every downstream consumer pins a single
+      # agreed NCP tag. Consumers are DISCOVERED (any sibling with a `.ncp-consumer`
+      # descriptor) — NCP names none of them. Siblings are not checked out in CI, so
+      # run it only if at least one descriptor is present; otherwise inform and skip
+      # (it is a release-time guard run from a full local tree).
+      - name: Consumer pin coherence (discovered siblings, if present)
         run: |
           base="$(cd .. && pwd)"
-          if [ -d "$base/crebain" ] || [ -d "$base/pid_vla" ] || [ -d "$base/Paper2Brain" ]; then
-            echo "Sibling consumer repos detected under $base — checking pins."
+          if ls "$base"/*/.ncp-consumer >/dev/null 2>&1; then
+            echo "Registered consumers detected under $base — checking pins."
             scripts/check-consumer-pins.sh "" "$base"
           else
-            echo "No sibling consumer repos under $base in this CI checkout — skipping consumer-pin check."
+            echo "No registered consumers (no */.ncp-consumer) under $base in this CI checkout — skipping."
             echo "Run scripts/check-consumer-pins.sh locally from a full tree before a tag bump."
           fi
 

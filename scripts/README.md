@@ -15,8 +15,8 @@ resolves the repo root from its own location.
 | Script | What it does |
 |---|---|
 | `check.sh` | Local gate: runs the full SDK test matrix across languages (`ncp-core` + TS bindings, `ncp-zenoh` build/loopback, `ncp-gateway`/`ncp-python`/`ncp-cpp` builds, the three Python guards, clippy). Mirrors CI. |
-| `repin-ncp.sh <tag> [base-dir]` | Re-pin every NCP consumer (`crebain`, `pid_vla/crates/ncp-observer`, `Paper2Brain`) to a single tag and refresh lockfiles. Edits files only — no commit/push/stage. |
-| `check-consumer-pins.sh [expected-tag] [base-dir]` | Read-only pin-consistency guard: reports the NCP pin each downstream consumer references and verifies they agree (optionally against `expected-tag`). No writes, builds, or git/network calls. |
+| `repin-ncp.sh <tag> [base-dir]` | Re-pin every **discovered** NCP consumer to a single tag and refresh lockfiles. Consumers self-register via a `.ncp-consumer` descriptor in their own repo — this script names none of them. Edits files only — no commit/push/stage. |
+| `check-consumer-pins.sh [expected-tag] [base-dir]` | Read-only pin-consistency guard: **discovers** consumers (any sibling with a `.ncp-consumer` descriptor) and verifies they pin one agreed tag (optionally `expected-tag`). No writes, builds, or git/network calls. See [`INTEGRATING.md`](../INTEGRATING.md) §"Registering a consumer". |
 | `check_proto_schema_parity.py` | Wire-conformance guard: `proto/ncp.proto` vs `schemas/*.schema.json` (field-set + enum wire-string parity). |
 | `check_conformance_vectors.py` | Validates the golden message vectors in `conformance/vectors/*.json` against the JSON Schemas. |
 | `check_acl_template.py` | Structural guard for `deploy/zenoh-access-control.json5` (valid Zenoh tokens + command/sensor PUT-authority invariants). |

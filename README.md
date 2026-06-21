@@ -115,7 +115,7 @@ assert!(check_version(NCP_VERSION, true)?);     // exact match -> Ok(true)
 assert!(check_version("0.9", true).is_err());   // 0.x minor diff -> rejected
 ```
 
-- **Spec:** [`proto/ncp.proto`](proto/ncp.proto) is the normative wire contract (proto-native — bindings and JSON Schemas generate from / conform to it via buf); [`NEURO_CYBERNETIC_PROTOCOL.md`](NEURO_CYBERNETIC_PROTOCOL.md) is the human-readable spec, and the JSON Schemas in [`schemas/`](schemas/) are its JSON projection.
+- **Spec:** [`proto/ncp.proto`](proto/ncp.proto) is the normative wire contract (proto-native — language bindings generate from it via buf). The JSON Schemas in [`schemas/`](schemas/) are its JSON projection, kept in lockstep with the proto by the parity guard (`scripts/check_proto_schema_parity.py`); today they are emitted from the reference Pydantic models (see [`schemas/README.md`](schemas/README.md)), with proto-native schema generation a tracked decoupling item. [`NEURO_CYBERNETIC_PROTOCOL.md`](NEURO_CYBERNETIC_PROTOCOL.md) is the human-readable spec.
 - **Conformance + benchmarks:**
 
 ```bash

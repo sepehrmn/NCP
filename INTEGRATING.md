@@ -19,6 +19,33 @@ alternatives (the honest comparison, including where it is *not*, is in
    unchanged. An analysis/observer client's is a read-only observer crate that
    drives nothing. Neither needs to edit existing code.
 
+## Registering a consumer (zero NCP-repo changes)
+
+The principle above extends to the **release tooling**: onboarding a consumer must
+not require editing the NCP repo. NCP names no consumer — its pin tooling
+(`scripts/check-consumer-pins.sh`, `scripts/repin-ncp.sh`) **discovers** consumers by
+globbing sibling repos for a `.ncp-consumer` descriptor. You register by committing
+that file to **your own** repo root; NCP never changes.
+
+`.ncp-consumer` is a small line-oriented file (`#` comments) declaring which of your
+files carry the NCP pin and, optionally, how to re-pin a bespoke layout:
+
+```text
+# how this repo pins NCP — read by NCP's generic, consumer-agnostic tooling.
+cargo_tag   src-tauri/Cargo.toml     # ncp-core/ncp-zenoh git-dep `tag = "vX"`
+cargo_lock  src-tauri/Cargo.lock     # resolved `NCP?tag=vX`
+npm_tag     package.json             # `"@…/ncp": "github:…/NCP#vX"`
+npm_lock    bun.lock                 # same spec `#vX` (+ resolved commit)
+mirror_ref  ncp/.mirror-ref          # a vendored-mirror pin file (the tag string)
+repin_cmd   scripts/sync_mirror.sh {TAG}   # OPTIONAL consumer-owned re-pin ({TAG} substituted)
+```
+
+Declare only the lines that apply to you (a pure observer might declare just
+`cargo_tag`/`cargo_lock`; a vendored mirror declares `mirror_ref` + a `repin_cmd`
+that runs its own sync). `check-consumer-pins.sh` then verifies every discovered
+consumer pins one agreed tag, and `repin-ncp.sh <tag>` re-pins them all — both with
+no NCP-side edit when a new consumer appears.
+
 ## 5-minute quickstart, per language (one canonical Rust core)
 
 **Rust** — depend on the SDK; subscribe/publish the planes or open a session:

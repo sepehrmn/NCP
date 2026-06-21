@@ -113,10 +113,11 @@ the PR.
 ## Releases and tags (no moved tags)
 
 Release tags are **immutable**. Once a `vX.Y.Z` tag is pushed, never delete,
-re-point, or force-update it — downstream consumers (`crebain`, `pid_vla`, the
-`Paper2Brain` vendored mirror) and `@sepehrmn/ncp` pin NCP by tag, and a moved
-tag silently changes the bytes those pins resolve to. If a release is wrong, cut
-a **new** tag (bump the version); do not rewrite history under an existing one.
+re-point, or force-update it — downstream consumers (each self-registered via a
+`.ncp-consumer` descriptor; see [`INTEGRATING.md`](INTEGRATING.md)) and the
+`@sepehrmn/ncp` package pin NCP by tag, and a moved tag silently changes the bytes
+those pins resolve to. If a release is wrong, cut a **new** tag (bump the version);
+do not rewrite history under an existing one.
 
 A release tag must be coherent: the Cargo workspace version, `package.json`
 version, and `CITATION.cff` version must all equal the tag's version, and the

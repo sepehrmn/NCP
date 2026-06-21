@@ -218,6 +218,7 @@ fn channel_value(data: Vec<f64>, unit: Option<String>) -> PyResult<String> {
 #[pymodule]
 fn ncp(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("NCP_VERSION", ncp_core::NCP_VERSION)?;
+    m.add("CONTRACT_HASH", ncp_core::CONTRACT_HASH)?;
     m.add("DEFAULT_REALM", ncp_core::DEFAULT_REALM)?;
     m.add_class::<Keys>()?;
     m.add_function(wrap_pyfunction!(check_version, m)?)?;
