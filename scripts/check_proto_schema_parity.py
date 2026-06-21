@@ -125,19 +125,37 @@ def walk_schema_objects(schema: dict):
     """Yield (title, kind, payload) for the top-level object and every $defs
     entry. kind is 'object' (payload=set of property names) or 'enum'
     (payload=list of enum values)."""
-    def emit(node: dict):
-        title = node.get("title")
+    def emit(node: dict, name: str | None):
+        # The type name is the node's `title` if present (Pydantic puts one inside
+        # each object), else the `$defs` KEY (schemars names a def by its key, with no
+        # internal `title`). Either projection works; the name is what matters.
+        title = node.get("title") or name
         if not title:
             return
         if node.get("type") == "object" and "properties" in node:
             yield title, "object", set(node["properties"].keys())
         elif "enum" in node:
             yield title, "enum", list(node["enum"])
+        elif "oneOf" in node:
+            # schemars renders an enum whose variants carry doc comments as a `oneOf`
+            # of {enum:[...]} and {const:"..."} branches. Gather the wire strings from
+            # every branch so enum wire-string parity still covers it (e.g. Observable,
+            # StimulusKind, whose binary_state / rate_inject variants are documented).
+            values: list[str] = []
+            for branch in node["oneOf"]:
+                if not isinstance(branch, dict):
+                    continue
+                if isinstance(branch.get("enum"), list):
+                    values.extend(branch["enum"])
+                elif "const" in branch:
+                    values.append(branch["const"])
+            if values:
+                yield title, "enum", values
 
-    yield from emit(schema)
-    for node in (schema.get("$defs") or {}).values():
+    yield from emit(schema, None)
+    for key, node in (schema.get("$defs") or {}).items():
         if isinstance(node, dict):
-            yield from emit(node)
+            yield from emit(node, key)
 
 
 def main() -> int:

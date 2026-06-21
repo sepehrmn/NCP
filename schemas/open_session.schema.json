@@ -1,344 +1,351 @@
 {
   "$defs": {
     "EntityBinding": {
-      "description": "Documents how a client entity maps to a stimulus or record port.",
+      "description": "Binds a client entity to a stimulus or record port.",
       "properties": {
-        "entity": {
-          "$ref": "#/$defs/EntityRef"
-        },
-        "port": {
-          "title": "Port",
-          "type": "string"
-        },
         "direction": {
           "default": "stimulus",
-          "enum": [
-            "stimulus",
-            "record"
-          ],
-          "title": "Direction",
+          "description": "`\"stimulus\"` | `\"record\"`.",
+          "type": "string"
+        },
+        "entity": {
+          "$ref": "#/$defs/EntityRef",
+          "default": {
+            "meta": {},
+            "path": "",
+            "role": "sensor"
+          }
+        },
+        "port": {
+          "default": "",
           "type": "string"
         }
       },
-      "required": [
-        "entity",
-        "port"
-      ],
-      "title": "EntityBinding",
       "type": "object"
     },
     "EntityRef": {
-      "description": "A hierarchical address for a client-side entity, e.g.\n``uav1/sensor/cam0`` or ``uav1/actuator/rotor`` \u2014 supports a\nsystem with 0..N sensors and 0..M actors that each own sensors/actuators.",
+      "description": "A hierarchical client-side entity address, e.g. `uav1/sensor/cam0`.",
       "properties": {
+        "meta": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "default": {},
+          "type": "object"
+        },
         "path": {
-          "title": "Path",
+          "default": "",
           "type": "string"
         },
         "role": {
           "$ref": "#/$defs/EntityRole",
           "default": "sensor"
-        },
-        "meta": {
-          "additionalProperties": {
-            "type": "string"
-          },
-          "title": "Meta",
-          "type": "object"
         }
       },
-      "required": [
-        "path"
-      ],
-      "title": "EntityRef",
       "type": "object"
     },
     "EntityRole": {
+      "description": "Hierarchical entity role for addressing sensors/actuators.",
       "enum": [
         "system",
         "actor",
         "sensor",
         "actuator"
       ],
-      "title": "EntityRole",
       "type": "string"
     },
     "NetworkRef": {
+      "description": "What to simulate.",
       "properties": {
         "kind": {
           "$ref": "#/$defs/NetworkRefKind",
           "default": "builtin"
         },
-        "ref": {
-          "title": "Ref",
-          "type": "string"
-        },
         "model_name": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
           "default": null,
-          "title": "Model Name"
-        },
-        "population_sizes": {
-          "additionalProperties": {
-            "type": "integer"
-          },
-          "title": "Population Sizes",
-          "type": "object"
+          "description": "kind=handle: which registered model to create if the handle has >1.",
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "params": {
           "additionalProperties": {
+            "format": "double",
             "type": "number"
           },
-          "title": "Params",
+          "default": {},
           "type": "object"
+        },
+        "population_sizes": {
+          "additionalProperties": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "default": {},
+          "type": "object"
+        },
+        "ref": {
+          "default": "",
+          "description": "builtin model name, or a `compiled_module_id` (kind=handle). `ref` is a\nRust keyword, so the field is `ref_` and renamed on the wire.",
+          "type": "string"
         }
       },
-      "required": [
-        "ref"
-      ],
-      "title": "NetworkRef",
       "type": "object"
     },
     "NetworkRefKind": {
+      "description": "What kind of network reference `NetworkRef.ref` is.",
       "enum": [
         "handle",
         "builtin",
         "model_id",
         "spec"
       ],
-      "title": "NetworkRefKind",
       "type": "string"
     },
     "Observable": {
-      "enum": [
-        "spikes",
-        "V_m",
-        "rate",
-        "weight",
-        "binary_state"
-      ],
-      "title": "Observable",
-      "type": "string"
+      "description": "What to record off a population/neuron/synapse.",
+      "oneOf": [
+        {
+          "enum": [
+            "spikes",
+            "V_m",
+            "rate",
+            "weight"
+          ],
+          "type": "string"
+        },
+        {
+          "const": "binary_state",
+          "description": "Binary / multi-state neurons: discrete state via spin_detector, not V_m. (#10)",
+          "type": "string"
+        }
+      ]
     },
     "RecordSpec": {
       "properties": {
         "targets": {
+          "default": [],
           "items": {
             "$ref": "#/$defs/RecordTarget"
           },
-          "title": "Targets",
           "type": "array"
         }
       },
-      "title": "RecordSpec",
       "type": "object"
     },
     "RecordTarget": {
+      "description": "One recording: client `port` name ← `observable` of `target` population.",
       "properties": {
-        "port": {
-          "title": "Port",
-          "type": "string"
+        "cadence_ms": {
+          "default": 1.0,
+          "format": "double",
+          "type": "number"
         },
-        "target": {
-          "title": "Target",
-          "type": "string"
+        "ids": {
+          "default": [],
+          "items": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "type": "array"
         },
         "observable": {
           "$ref": "#/$defs/Observable",
           "default": "V_m"
         },
-        "ids": {
-          "items": {
-            "type": "integer"
-          },
-          "title": "Ids",
-          "type": "array"
-        },
-        "cadence_ms": {
-          "default": 1.0,
-          "title": "Cadence Ms",
-          "type": "number"
+        "port": {
+          "default": "",
+          "type": "string"
         },
         "recordables": {
+          "default": [],
+          "description": "Generic named multimeter recordables (model-specific: e.g. `g_ex`/`g_in`\nfor conductance models, `w` for aeif, `rate` for rate models). Empty =\njust `observable`. Resolved via NEST multimeter `record_from`. (#10)",
           "items": {
             "type": "string"
           },
-          "title": "Recordables",
           "type": "array"
+        },
+        "target": {
+          "default": "",
+          "type": "string"
         }
       },
-      "required": [
-        "port",
-        "target"
-      ],
-      "title": "RecordTarget",
       "type": "object"
     },
     "SimConfig": {
+      "description": "Integration / streaming configuration.",
       "properties": {
-        "dt_ms": {
-          "default": 0.1,
-          "title": "Dt Ms",
-          "type": "number"
-        },
         "chunk_ms": {
           "default": 10.0,
-          "title": "Chunk Ms",
+          "format": "double",
           "type": "number"
         },
-        "seed": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
+        "dt_ms": {
+          "default": 0.1,
+          "format": "double",
+          "type": "number"
+        },
+        "duration_ms": {
           "default": null,
-          "title": "Seed"
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
         },
         "mode": {
           "$ref": "#/$defs/SimMode",
           "default": "stream"
         },
-        "duration_ms": {
-          "anyOf": [
-            {
-              "type": "number"
-            },
-            {
-              "type": "null"
-            }
-          ],
+        "seed": {
           "default": null,
-          "title": "Duration Ms"
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
         }
       },
-      "title": "SimConfig",
       "type": "object"
     },
     "SimMode": {
+      "description": "Stream vs batch simulation.",
       "enum": [
         "stream",
         "batch"
       ],
-      "title": "SimMode",
       "type": "string"
     },
     "StimulusKind": {
-      "enum": [
-        "current_pA",
-        "rate_hz",
-        "spike_times",
-        "weight_set",
-        "rate_inject"
-      ],
-      "title": "StimulusKind",
-      "type": "string"
+      "description": "How a stimulus drives a target.",
+      "oneOf": [
+        {
+          "enum": [
+            "current_pA",
+            "rate_hz",
+            "spike_times",
+            "weight_set"
+          ],
+          "type": "string"
+        },
+        {
+          "const": "rate_inject",
+          "description": "Continuous-rate injection for rate-based neurons (rate connections /\nstep_rate_generator); rate models cannot receive spikes. (#10)",
+          "type": "string"
+        }
+      ]
     },
     "StimulusSpec": {
       "properties": {
         "targets": {
+          "default": [],
           "items": {
             "$ref": "#/$defs/StimulusTarget"
           },
-          "title": "Targets",
           "type": "array"
         }
       },
-      "title": "StimulusSpec",
       "type": "object"
     },
     "StimulusTarget": {
+      "description": "One stimulus input port.",
       "properties": {
-        "port": {
-          "title": "Port",
-          "type": "string"
-        },
-        "target": {
-          "title": "Target",
-          "type": "string"
+        "ids": {
+          "default": [],
+          "items": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "type": "array"
         },
         "kind": {
           "$ref": "#/$defs/StimulusKind",
           "default": "current_pA"
         },
-        "ids": {
-          "items": {
-            "type": "integer"
-          },
-          "title": "Ids",
-          "type": "array"
-        },
         "params": {
           "additionalProperties": {
+            "format": "double",
             "type": "number"
           },
-          "title": "Params",
+          "default": {},
+          "description": "Named stimulus parameters beyond the scalar value, e.g. siegert_neuron's\ndiffusion_connection `drift_factor` / `diffusion_factor`. (#10)",
           "type": "object"
+        },
+        "port": {
+          "default": "",
+          "type": "string"
+        },
+        "target": {
+          "default": "",
+          "type": "string"
         }
       },
-      "required": [
-        "port",
-        "target"
-      ],
-      "title": "StimulusTarget",
       "type": "object"
     }
   },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Request a simulation: declare what to record and what to stimulate.",
   "properties": {
-    "ncp_version": {
-      "default": "0.4",
-      "title": "Ncp Version",
-      "type": "string"
+    "bindings": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/EntityBinding"
+      },
+      "type": "array"
+    },
+    "contract_hash": {
+      "default": "2cf0763ad61e4f1c",
+      "description": "Caller's [`CONTRACT_HASH`], carried in the handshake as an **advisory**\nidentity signal (see [`ContractStatus`]): a mismatch is logged, not rejected —\n`ncp_version` is the hard compatibility gate. Defaults to our own hash so\nevery session advertises it; `None` (serialized `null`) = not advertised.",
+      "type": [
+        "string",
+        "null"
+      ]
     },
     "kind": {
       "const": "open_session",
       "default": "open_session",
-      "title": "Kind",
       "type": "string"
     },
-    "session_id": {
-      "title": "Session Id",
+    "ncp_version": {
+      "default": "0.4",
       "type": "string"
     },
     "network": {
-      "$ref": "#/$defs/NetworkRef"
+      "$ref": "#/$defs/NetworkRef",
+      "default": {
+        "kind": "builtin",
+        "model_name": null,
+        "params": {},
+        "population_sizes": {},
+        "ref": ""
+      }
     },
     "record": {
-      "$ref": "#/$defs/RecordSpec"
+      "$ref": "#/$defs/RecordSpec",
+      "default": {
+        "targets": []
+      }
     },
-    "stimulus": {
-      "$ref": "#/$defs/StimulusSpec"
+    "session_id": {
+      "default": "",
+      "type": "string"
     },
     "sim": {
-      "$ref": "#/$defs/SimConfig"
+      "$ref": "#/$defs/SimConfig",
+      "default": {
+        "chunk_ms": 10.0,
+        "dt_ms": 0.1,
+        "duration_ms": null,
+        "mode": "stream",
+        "seed": null
+      }
     },
-    "bindings": {
-      "items": {
-        "$ref": "#/$defs/EntityBinding"
-      },
-      "title": "Bindings",
-      "type": "array"
-    },
-    "contract_hash": {
-      "anyOf": [
-        {
-          "type": "string"
-        },
-        {
-          "type": "null"
-        }
-      ],
-      "default": "2cf0763ad61e4f1c",
-      "title": "Contract Hash"
+    "stimulus": {
+      "$ref": "#/$defs/StimulusSpec",
+      "default": {
+        "targets": []
+      }
     }
   },
   "required": [

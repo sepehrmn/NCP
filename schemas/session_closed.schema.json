@@ -1,24 +1,22 @@
 {
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
   "properties": {
-    "ncp_version": {
-      "default": "0.4",
-      "title": "Ncp Version",
-      "type": "string"
-    },
     "kind": {
       "const": "session_closed",
       "default": "session_closed",
-      "title": "Kind",
       "type": "string"
     },
-    "session_id": {
-      "title": "Session Id",
+    "ncp_version": {
+      "default": "0.4",
       "type": "string"
     },
     "ok": {
       "default": true,
-      "title": "Ok",
       "type": "boolean"
+    },
+    "session_id": {
+      "default": "",
+      "type": "string"
     }
   },
   "required": [

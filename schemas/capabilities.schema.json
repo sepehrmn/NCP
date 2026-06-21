@@ -1,184 +1,153 @@
 {
   "$defs": {
     "ChannelKind": {
+      "description": "Channel arity (carries the vec semantics so the envelope stays generic).",
       "enum": [
         "scalar",
         "vec3",
         "quat",
         "array"
       ],
-      "title": "ChannelKind",
       "type": "string"
     },
     "ChannelSpec": {
       "description": "Declares a named channel a controller produces or consumes.",
       "properties": {
-        "name": {
-          "title": "Name",
-          "type": "string"
+        "description": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "kind": {
           "$ref": "#/$defs/ChannelKind",
           "default": "scalar"
         },
-        "unit": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Unit"
-        },
-        "size": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Size"
+        "name": {
+          "default": "",
+          "type": "string"
         },
         "optional": {
           "default": true,
-          "title": "Optional",
           "type": "boolean"
         },
-        "description": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
+        "size": {
           "default": null,
-          "title": "Description"
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "unit": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
         }
       },
-      "required": [
-        "name"
-      ],
-      "title": "ChannelSpec",
       "type": "object"
     },
     "Role": {
+      "description": "Who a peer is in the closed-loop handshake.",
       "enum": [
         "controller",
         "plant"
       ],
-      "title": "Role",
       "type": "string"
     },
     "SafetyLimits": {
+      "description": "Bounds the action plane. `max_speed_mps`, `geofence_radius_m` and\n`command_timeout_ms` are enforced by the action-plane safety governor;\n`max_tilt_rad` is advisory metadata and is **not** enforced in this layer\n(no command-path clamp consumes it yet).",
       "properties": {
-        "max_speed_mps": {
-          "anyOf": [
-            {
-              "type": "number"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Max Speed Mps"
-        },
-        "max_tilt_rad": {
-          "anyOf": [
-            {
-              "type": "number"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Max Tilt Rad"
-        },
-        "geofence_radius_m": {
-          "anyOf": [
-            {
-              "type": "number"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Geofence Radius M"
-        },
         "command_timeout_ms": {
           "default": 500.0,
-          "title": "Command Timeout Ms",
+          "format": "double",
           "type": "number"
+        },
+        "geofence_radius_m": {
+          "default": null,
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "max_speed_mps": {
+          "default": null,
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "max_tilt_rad": {
+          "default": null,
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
         }
       },
-      "title": "SafetyLimits",
       "type": "object"
     }
   },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
   "description": "Handshake: who the controller is and what it speaks.",
   "properties": {
-    "ncp_version": {
-      "default": "0.4",
-      "title": "Ncp Version",
+    "codec_id": {
+      "default": null,
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "command_channels": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/ChannelSpec"
+      },
+      "type": "array"
+    },
+    "control_rate_hz": {
+      "default": 20.0,
+      "format": "double",
+      "type": "number"
+    },
+    "controller_id": {
+      "default": "",
       "type": "string"
     },
     "kind": {
       "const": "capabilities",
       "default": "capabilities",
-      "title": "Kind",
       "type": "string"
     },
-    "controller_id": {
-      "title": "Controller Id",
+    "ncp_version": {
+      "default": "0.4",
       "type": "string"
     },
     "role": {
       "$ref": "#/$defs/Role",
       "default": "controller"
     },
-    "control_rate_hz": {
-      "default": 20.0,
-      "title": "Control Rate Hz",
-      "type": "number"
+    "safety": {
+      "$ref": "#/$defs/SafetyLimits",
+      "default": {
+        "command_timeout_ms": 500.0,
+        "geofence_radius_m": null,
+        "max_speed_mps": null,
+        "max_tilt_rad": null
+      }
     },
     "sensor_channels": {
+      "default": [],
       "items": {
         "$ref": "#/$defs/ChannelSpec"
       },
-      "title": "Sensor Channels",
       "type": "array"
-    },
-    "command_channels": {
-      "items": {
-        "$ref": "#/$defs/ChannelSpec"
-      },
-      "title": "Command Channels",
-      "type": "array"
-    },
-    "codec_id": {
-      "anyOf": [
-        {
-          "type": "string"
-        },
-        {
-          "type": "null"
-        }
-      ],
-      "default": null,
-      "title": "Codec Id"
-    },
-    "safety": {
-      "$ref": "#/$defs/SafetyLimits"
     }
   },
   "required": [

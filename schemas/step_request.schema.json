@@ -1,95 +1,80 @@
 {
   "$defs": {
     "ChannelValue": {
-      "description": "A channel sample: a flat list of floats plus an optional unit string.\n\nWidth carries the semantics (1=scalar, 3=vec3, 4=quat, N=array), so the\nenvelope stays generic and any project can add channels without schema\nchanges.",
+      "description": "A channel sample: a flat list of floats plus an optional unit string. Width\ncarries the semantics (1=scalar, 3=vec3, 4=quat, N=array).",
       "properties": {
         "data": {
+          "default": [],
           "items": {
+            "format": "double",
             "type": "number"
           },
-          "title": "Data",
           "type": "array"
         },
         "unit": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
           "default": null,
-          "title": "Unit"
+          "type": [
+            "string",
+            "null"
+          ]
         }
       },
-      "title": "ChannelValue",
       "type": "object"
     },
     "StimulusFrame": {
+      "description": "The values to inject this step (keyed by stimulus port).",
       "properties": {
-        "ncp_version": {
-          "default": "0.4",
-          "title": "Ncp Version",
+        "kind": {
+          "default": "stimulus_frame",
           "type": "string"
         },
-        "kind": {
-          "const": "stimulus_frame",
-          "default": "stimulus_frame",
-          "title": "Kind",
+        "ncp_version": {
+          "default": "0.4",
           "type": "string"
         },
         "session_id": {
-          "title": "Session Id",
+          "default": "",
           "type": "string"
         },
         "t": {
           "default": 0.0,
-          "title": "T",
+          "format": "double",
           "type": "number"
         },
         "values": {
           "additionalProperties": {
             "$ref": "#/$defs/ChannelValue"
           },
-          "title": "Values",
+          "default": {},
           "type": "object"
         }
       },
-      "required": [
-        "session_id"
-      ],
-      "title": "StimulusFrame",
       "type": "object"
     }
   },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Advance one chunk; optional stimulus; returns an `ObservationFrame`.",
   "properties": {
-    "ncp_version": {
-      "default": "0.4",
-      "title": "Ncp Version",
-      "type": "string"
+    "advance_ms": {
+      "default": null,
+      "format": "double",
+      "type": [
+        "number",
+        "null"
+      ]
     },
     "kind": {
       "const": "step_request",
       "default": "step_request",
-      "title": "Kind",
+      "type": "string"
+    },
+    "ncp_version": {
+      "default": "0.4",
       "type": "string"
     },
     "session_id": {
-      "title": "Session Id",
+      "default": "",
       "type": "string"
-    },
-    "advance_ms": {
-      "anyOf": [
-        {
-          "type": "number"
-        },
-        {
-          "type": "null"
-        }
-      ],
-      "default": null,
-      "title": "Advance Ms"
     },
     "stimulus": {
       "anyOf": [

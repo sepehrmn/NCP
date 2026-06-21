@@ -1,5 +1,4 @@
 {
-  "ncp_version": "0.4",
   "messages": [
     "capabilities",
     "close_session",
@@ -15,5 +14,6 @@
     "step_request",
     "stimulus_frame"
   ],
-  "note": "Generated from backend/neurocontrol Pydantic models; do not edit by hand."
+  "ncp_version": "0.4",
+  "note": "Generated from the ncp-core serde reference types (cargo run --features schema --bin gen-schemas); do not edit by hand."
 }

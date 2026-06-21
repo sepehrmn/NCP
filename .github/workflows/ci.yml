@@ -81,6 +81,14 @@ jobs:
       - name: Schema-default safety guard
         run: python3 scripts/check_schema_defaults.py
 
+      # NCP owns its schema (proto-first): regenerate from the ncp-core serde reference
+      # types and assert the committed schemas/ are byte-identical, so a Rust type change
+      # that is not re-generated fails CI rather than silently drifting the JSON projection.
+      - name: Schemas freshly generated from the Rust reference
+        run: |
+          cargo run -q -p ncp-core --features schema --bin gen-schemas -- "${RUNNER_TEMP:-/tmp}/ncp-schemas-fresh"
+          diff -ru "${RUNNER_TEMP:-/tmp}/ncp-schemas-fresh" schemas/ -x README.md
+
   buf:
     name: buf lint + build
     runs-on: ubuntu-latest

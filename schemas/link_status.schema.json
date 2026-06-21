@@ -1,53 +1,51 @@
 {
-  "description": "Link-health telemetry from the seq-gap / CUSUM monitor (control plane).\n``burst=True`` flags sustained loss (a possible jam) \u2014 fail safe, do not just\nadd redundancy. See ``ncp-core`` ``LinkMonitor`` / ``RESILIENCE.md``.",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Link-health telemetry from the seq-gap / CUSUM monitor (published on the\ncontrol plane). `burst=true` flags sustained loss — a possible jam — at which\npoint the only sound response is to fail safe, not add redundancy.",
   "properties": {
-    "ncp_version": {
-      "default": "0.4",
-      "title": "Ncp Version",
-      "type": "string"
+    "burst": {
+      "default": false,
+      "type": "boolean"
     },
     "kind": {
       "const": "link_status",
       "default": "link_status",
-      "title": "Kind",
       "type": "string"
-    },
-    "session_id": {
-      "default": "",
-      "title": "Session Id",
-      "type": "string"
-    },
-    "t": {
-      "default": 0.0,
-      "title": "T",
-      "type": "number"
     },
     "last_seq": {
       "default": -1,
-      "title": "Last Seq",
-      "type": "integer"
-    },
-    "received": {
-      "default": 0,
-      "title": "Received",
-      "type": "integer"
-    },
-    "lost": {
-      "default": 0,
-      "title": "Lost",
+      "format": "int64",
       "type": "integer"
     },
     "loss_rate": {
       "default": 0.0,
-      "title": "Loss Rate",
+      "format": "double",
       "type": "number"
     },
-    "burst": {
-      "default": false,
-      "title": "Burst",
-      "type": "boolean"
+    "lost": {
+      "default": 0,
+      "format": "int64",
+      "type": "integer"
+    },
+    "ncp_version": {
+      "default": "0.4",
+      "type": "string"
+    },
+    "received": {
+      "default": 0,
+      "format": "int64",
+      "type": "integer"
+    },
+    "session_id": {
+      "default": "",
+      "type": "string"
+    },
+    "t": {
+      "default": 0.0,
+      "format": "double",
+      "type": "number"
     }
   },
+  "required": [],
   "title": "LinkStatus",
   "type": "object"
 }

@@ -29,7 +29,7 @@ fn main() {
 
     // One schema per top-level wire message `kind`. Keep this list in lockstep with
     // the proto messages / the conformance corpus coverage gate.
-    let schemas = kinds! {
+    let mut schemas = kinds! {
         "capabilities"      => ncp_core::Capabilities,
         "open_session"      => ncp_core::OpenSession,
         "session_opened"    => ncp_core::SessionOpened,
@@ -46,7 +46,38 @@ fn main() {
     };
 
     let mut names: Vec<&str> = Vec::new();
-    for (name, val) in &schemas {
+    for (name, val) in &mut schemas {
+        // Pin the `kind` discriminator to a JSON-Schema `const` (the wire `kind` is a
+        // plain Rust `String`, so schemars emits no const on its own). The conformance
+        // corpus maps a vector to its schema via `properties.kind.const`, and the
+        // validator/`required_fields` drift guard reads it, so the projection must carry
+        // it. We know the exact value here — it is this message's map key.
+        if let Some(kind) = val
+            .get_mut("properties")
+            .and_then(|p| p.get_mut("kind"))
+            .and_then(|k| k.as_object_mut())
+        {
+            kind.insert(
+                "const".to_string(),
+                serde_json::Value::String((*name).to_string()),
+            );
+        }
+        // Inject the `required` array from the VALIDATION contract
+        // (`required_fields`), not the serde derive: the serde types default every
+        // field, so schemars marks nothing required, but `validate()` does require
+        // some. `required_fields` is the single source of truth.
+        if let Some(req) = ncp_core::required_fields(name) {
+            if let Some(obj) = val.as_object_mut() {
+                obj.insert(
+                    "required".to_string(),
+                    serde_json::Value::Array(
+                        req.iter()
+                            .map(|f| serde_json::Value::String((*f).to_string()))
+                            .collect(),
+                    ),
+                );
+            }
+        }
         let pretty = serde_json::to_string_pretty(val).expect("pretty json");
         fs::write(out.join(format!("{name}.schema.json")), pretty + "\n").expect("write schema");
         names.push(name);

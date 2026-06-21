@@ -1177,11 +1177,13 @@ pub fn message_kind(json: &serde_json::Value) -> Option<&str> {
     json.get("kind").and_then(|v| v.as_str())
 }
 
-/// The schema-`required` field names for a given message `kind`. This mirrors
-/// the `required` arrays in `ncp/schemas/<kind>.schema.json` (which are derived
-/// from the Pydantic reference); kinds with no required fields return `[]`. An
-/// unknown `kind` returns `None`.
-fn required_fields(kind: &str) -> Option<&'static [&'static str]> {
+/// The schema-`required` field names for a given message `kind` — the validation
+/// contract (`validate()` enforces these). The serde types default every field
+/// (struct-level `#[serde(default)]`), so this, not the serde derive, is the source
+/// of truth for what a peer MUST send; `gen-schemas` injects these into each
+/// schema's `required` array. Kinds with no required fields return `[]`; an unknown
+/// `kind` returns `None`.
+pub fn required_fields(kind: &str) -> Option<&'static [&'static str]> {
     Some(match kind {
         "capabilities" => &["controller_id"],
         "close_session" => &["session_id"],

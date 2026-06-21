@@ -12,21 +12,23 @@ parity guard keeps from drifting apart.
 
 ## Source of truth & regeneration (IMPORTANT)
 
-These files are **generated, not hand-edited**. Today they are emitted from the engram
-Pydantic models via `backend/neurocontrol/export_schemas.py` and re-vendored here; a
-drift guard checks the committed copy against a fresh export. NCP also ships its own
-**proto-first** generator — `cargo run -p ncp-core --features schema --bin gen-schemas`
-derives the schemas directly from the `ncp-core` serde reference types (the
-conformance-locked reference implementation, which carry the enum wire strings) — and a
-**schema-default safety guard** (`scripts/check_schema_defaults.py`) asserts every
-committed field DEFAULT matches that Rust reference (it caught `CommandFrame.mode`
-defaulting to the actuating `"active"` instead of the fail-safe `"hold"`). The full
-cutover to NCP-owned generation (replacing the committed schemas, adapting the
-parity/conformance guards to the schemars shape, migrating engram to a pure consumer)
-is staged; until then the Pydantic export is the transitional source and the default
-guard bridges the two.
+These files are **generated, not hand-edited**, and **NCP owns their generation**
+(proto-first): `cargo run -p ncp-core --features schema --bin gen-schemas` derives them
+directly from the `ncp-core` serde reference types — the conformance-locked reference
+implementation of `proto/ncp.proto`, which carry the enum wire strings (`#[serde(rename)]`),
+the fail-safe field defaults, the `kind` discriminator const, and the `required_fields`
+validation contract. CI **regenerates and diffs** them on every run (the schemas cannot
+drift from the Rust types), and `scripts/check_schema_defaults.py` independently pins
+every field default to the reference (it caught `CommandFrame.mode` defaulting to the
+actuating `"active"` instead of the fail-safe `"hold"` — a bug the previous
+consumer-Pydantic source had introduced).
 
-Do not edit a `*.schema.json` by hand — regenerate and commit the result.
+Downstream consumers (e.g. engram) are pure **consumers** of these schemas: they validate
+their own representations *against* this projection, they do not produce it. (Engram's
+`test_schema_drift` checks its Pydantic models stay field-compatible with the vendored
+copy.)
+
+Do not edit a `*.schema.json` by hand — run `gen-schemas` and commit the result.
 [`index.json`](index.json) lists the message set (`ncp_version` `0.4`): `capabilities`,
 `open_session` / `session_opened`, `close_session` / `session_closed`, `run_request`,
 `step_request`, `sensor_frame` / `stimulus_frame` / `observation_frame` / `command_frame`,

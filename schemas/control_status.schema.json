@@ -1,71 +1,65 @@
 {
   "$defs": {
     "Mode": {
+      "description": "Controller mode (the safety-critical action authority lives here).",
       "enum": [
         "init",
         "active",
         "hold",
         "estop"
       ],
-      "title": "Mode",
       "type": "string"
     }
   },
-  "description": "Controller -> plant / telemetry: loop health and mode.",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Controller → plant / telemetry: loop health and mode.",
   "properties": {
-    "ncp_version": {
-      "default": "0.4",
-      "title": "Ncp Version",
-      "type": "string"
-    },
     "kind": {
       "const": "control_status",
       "default": "control_status",
-      "title": "Kind",
       "type": "string"
     },
-    "seq": {
-      "default": 0,
-      "title": "Seq",
-      "type": "integer"
-    },
-    "t": {
+    "loop_latency_ms": {
       "default": 0.0,
-      "title": "T",
+      "format": "double",
       "type": "number"
     },
     "mode": {
       "$ref": "#/$defs/Mode",
       "default": "init"
     },
-    "sim_time_ms": {
-      "default": 0.0,
-      "title": "Sim Time Ms",
-      "type": "number"
+    "ncp_version": {
+      "default": "0.4",
+      "type": "string"
     },
-    "loop_latency_ms": {
-      "default": 0.0,
-      "title": "Loop Latency Ms",
-      "type": "number"
+    "note": {
+      "default": null,
+      "type": [
+        "string",
+        "null"
+      ]
     },
     "safety_ok": {
       "default": true,
-      "title": "Safety Ok",
       "type": "boolean"
     },
-    "note": {
-      "anyOf": [
-        {
-          "type": "string"
-        },
-        {
-          "type": "null"
-        }
-      ],
-      "default": null,
-      "title": "Note"
+    "seq": {
+      "default": 0,
+      "format": "int64",
+      "type": "integer"
+    },
+    "sim_time_ms": {
+      "default": 0.0,
+      "format": "double",
+      "type": "number"
+    },
+    "t": {
+      "default": 0.0,
+      "format": "double",
+      "type": "number"
     }
   },
+  "required": [],
   "title": "ControlStatus",
   "type": "object"
 }

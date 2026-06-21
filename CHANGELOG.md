@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-06-21
+
+Patch — **wire `0.4` unchanged** (no consumer re-pin). NCP now **owns its JSON-Schema
+generation** proto-first; the schema-from-a-consumer inversion is gone.
+
+### Changed
+
+- **Schema ownership cutover.** The committed `schemas/*.schema.json` are now generated
+  by `gen-schemas` from the `ncp-core` serde reference types (schemars) — not from a
+  downstream consumer's Pydantic models. The generator injects the `kind` discriminator
+  `const` and the `required` array from the `required_fields()` validation contract
+  (now `pub`), and the field defaults come straight from the Rust types — so the
+  `CommandFrame.mode` fail-safe default (`hold`) is now **intrinsic and cannot drift**.
+  CI **regenerates and diffs** the schemas on every run (`gen-schemas` + `diff`), so a
+  Rust type change that isn't regenerated fails CI.
+- `scripts/check_proto_schema_parity.py` adapted to the schemars projection (names a
+  `$defs` type by its key, and reads the `oneOf` enum form schemars emits for enums with
+  documented variants — restoring wire-string parity coverage for `Observable` /
+  `StimulusKind`). `required_fields` is now `pub` (the generator's source of truth for
+  `required`).
+- Engram (`backend/neurocontrol`) is now a pure **consumer** of the NCP-owned schema:
+  `export_schemas.py` is deprecated (no longer the source), and `test_schema_drift`
+  checks engram's Pydantic models stay **field-compatible** with the vendored NCP schema
+  (rather than producing it).
+
 ## [0.4.1] - 2026-06-21
 
 Patch release — **wire `0.4` unchanged** (no consumer re-pin required; v0.4.0 and v0.4.1

@@ -1,95 +1,81 @@
 {
   "$defs": {
     "SimProvenance": {
+      "description": "Scientific-boundary discriminators carried on every opened session. Returned\ndata is a **raw simulation output of a specified model**, never a validated\nreproduction: `calibrated_posterior=false`, `is_simulation_output=true`.",
       "properties": {
-        "network_ref": {
-          "title": "Network Ref",
-          "type": "string"
+        "advisory_only": {
+          "default": true,
+          "type": "boolean"
         },
         "backend": {
-          "title": "Backend",
+          "default": "",
           "type": "string"
-        },
-        "seed": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Seed"
         },
         "calibrated_posterior": {
           "default": false,
-          "title": "Calibrated Posterior",
           "type": "boolean"
         },
         "is_simulation_output": {
           "default": true,
-          "title": "Is Simulation Output",
           "type": "boolean"
         },
-        "advisory_only": {
-          "default": true,
-          "title": "Advisory Only",
-          "type": "boolean"
+        "network_ref": {
+          "default": "",
+          "type": "string"
         },
         "note": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
           "default": null,
-          "title": "Note"
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "seed": {
+          "default": null,
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
         }
       },
-      "required": [
-        "network_ref",
-        "backend"
-      ],
-      "title": "SimProvenance",
       "type": "object"
     }
   },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Ack of `open_session` with resolved sizes and provenance.",
   "properties": {
-    "ncp_version": {
-      "default": "0.4",
-      "title": "Ncp Version",
+    "backend": {
+      "default": "mock",
       "type": "string"
+    },
+    "contract_hash": {
+      "default": "2cf0763ad61e4f1c",
+      "description": "Server's [`CONTRACT_HASH`] — the reply half of the handshake (see\n[`OpenSession::contract_hash`]). A client treats a hash difference as an\n**advisory** ([`ContractStatus::Mismatch`], logged not rejected); the version\nis the hard gate. `None` (serialized `null`) = not advertised.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "error": {
+      "default": null,
+      "type": [
+        "string",
+        "null"
+      ]
     },
     "kind": {
       "const": "session_opened",
       "default": "session_opened",
-      "title": "Kind",
       "type": "string"
     },
-    "session_id": {
-      "title": "Session Id",
+    "ncp_version": {
+      "default": "0.4",
       "type": "string"
     },
     "ok": {
       "default": true,
-      "title": "Ok",
       "type": "boolean"
-    },
-    "backend": {
-      "default": "mock",
-      "title": "Backend",
-      "type": "string"
-    },
-    "resolved": {
-      "additionalProperties": {
-        "type": "integer"
-      },
-      "title": "Resolved",
-      "type": "object"
     },
     "provenance": {
       "anyOf": [
@@ -102,29 +88,17 @@
       ],
       "default": null
     },
-    "error": {
-      "anyOf": [
-        {
-          "type": "string"
-        },
-        {
-          "type": "null"
-        }
-      ],
-      "default": null,
-      "title": "Error"
+    "resolved": {
+      "additionalProperties": {
+        "format": "int64",
+        "type": "integer"
+      },
+      "default": {},
+      "type": "object"
     },
-    "contract_hash": {
-      "anyOf": [
-        {
-          "type": "string"
-        },
-        {
-          "type": "null"
-        }
-      ],
-      "default": "2cf0763ad61e4f1c",
-      "title": "Contract Hash"
+    "session_id": {
+      "default": "",
+      "type": "string"
     }
   },
   "required": [

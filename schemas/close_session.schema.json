@@ -1,18 +1,17 @@
 {
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
   "properties": {
-    "ncp_version": {
-      "default": "0.4",
-      "title": "Ncp Version",
-      "type": "string"
-    },
     "kind": {
       "const": "close_session",
       "default": "close_session",
-      "title": "Kind",
+      "type": "string"
+    },
+    "ncp_version": {
+      "default": "0.4",
       "type": "string"
     },
     "session_id": {
-      "title": "Session Id",
+      "default": "",
       "type": "string"
     }
   },
