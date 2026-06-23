@@ -13,7 +13,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       # Pinned to the workspace rust-version (Cargo.toml: rust-version = "1.88.0").
       # 1.88 is the floor: transitive deps in Cargo.lock (darling, time/time-core,
@@ -110,7 +110,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
       - name: Cache cargo build artifacts
@@ -146,7 +146,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
       - name: Install buf
         uses: bufbuild/buf-setup-action@v1
         with:
@@ -175,7 +175,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
       - name: Install bun
         uses: oven-sh/setup-bun@v2
       # The published @sepehrmn/ncp package ships the prebuilt ncp-ts/dist (it is
@@ -202,7 +202,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
       # Read-only guard: the Cargo workspace version, package.json version, and
       # CITATION.cff version must all agree. Catches a release that bumps one
       # metadata file but forgets another (the "stale metadata / moved tag"
@@ -234,7 +234,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
       # Supply-chain gate over the committed Cargo.lock: RustSec vulnerability +
       # yanked advisories, a default-deny license allowlist, banned/wildcard deps,
       # and source restrictions. Config + documented advisory ignores: deny.toml.
