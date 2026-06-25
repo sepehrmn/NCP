@@ -276,6 +276,8 @@ def main() -> None:
     p.add_argument("--seed", type=int, default=12345)
     p.add_argument("--strict", action="store_true",
                    help="exit non-zero if the spike-count equivalence check fails")
+    p.add_argument("--out", type=str, default=None,
+                   help="write JSON results to this file (creates parent dirs)")
     args = p.parse_args()
 
     try:
@@ -314,6 +316,13 @@ def main() -> None:
              eq["checked_reps"]), flush=True)
 
     print(json.dumps(report, indent=2))
+
+    if args.out:
+        import os
+        os.makedirs(os.path.dirname(args.out) or ".", exist_ok=True)
+        with open(args.out, "w") as f:
+            json.dump(report, f, indent=2)
+        print(f"Wrote results to {args.out}", flush=True)
 
     if not eq["all_efficient_identical"]:
         print("CORRECTNESS_PROBLEM spike counts diverge across "

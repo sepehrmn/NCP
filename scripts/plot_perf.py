@@ -19,6 +19,18 @@ DATA IS NORMATIVE. The benchmark numbers below are transcribed verbatim from
 caveat). DO NOT alter them here. Regenerate after any benchmark change so the
 figures and the prose never drift.
 
+DATA PROVENANCE. Each benchmark script (``bench_realtime.py``, ``bench_overlap.py``,
+``bench_gil_overlap.py``, ``bench_chunk_overhead.py``) now accepts ``--out <file>``
+to persist its JSON results. When the data files exist under ``docs/plots/data/``,
+this script reads them instead of the hardcoded constants below, so the figures
+are always backed by a machine-generated audit trail. If the files are absent
+(e.g. NEST is not installed), the hardcoded constants are used as fallback so
+SVG generation never breaks. To regenerate the full audit trail::
+
+    python3 scripts/bench_realtime.py --out docs/plots/data/realtime.json [flags]
+    python3 scripts/bench_gil_overlap.py --out docs/plots/data/gil_overlap.json [flags]
+    python3 scripts/plot_perf.py  # picks up the data files automatically
+
 Honesty invariants baked into the figures (a regression in any is a bug):
   * Overlap falloff curve uses S(work) = (compute + work) / max(compute, work),
     compute = 8.0 ms  (NOT the doc's literal max/sum, which is inverted).
@@ -36,6 +48,7 @@ Deps: stdlib + numpy + matplotlib only (no seaborn).
 
 from __future__ import annotations
 
+import json
 import os
 
 import matplotlib
@@ -91,6 +104,49 @@ REGIME_OVERLAP = (
 )
 
 OUTDIR = os.path.join("docs", "plots")
+DATADIR = os.path.join("docs", "plots", "data")
+
+# --------------------------------------------------------------------------- #
+# 1b. OPTIONAL DATA-FILE OVERRIDE (audit trail)
+#     If benchmark JSON files exist under docs/plots/data/, load them and
+#     override the hardcoded constants above. This creates a machine-generated
+#     provenance chain: bench script → JSON file → plot. If the files are
+#     absent (e.g. NEST not installed), the hardcoded constants stand.
+# --------------------------------------------------------------------------- #
+
+_rt_data_path = os.path.join(DATADIR, "realtime.json")
+_gil_data_path = os.path.join(DATADIR, "gil_overlap.json")
+
+if os.path.isfile(_rt_data_path):
+    with open(_rt_data_path) as _f:
+        _rt = json.load(_f)
+    # Rebuild RT dict from the grid: {n: [rt_t1, rt_t2, ...]}
+    _new_rt = {}
+    for _row in _rt.get("grid", []):
+        _n = _row["n"]
+        if _n not in _new_rt:
+            _new_rt[_n] = []
+        _new_rt[_n].append(_row["realtime_factor"])
+    if _new_rt:
+        # Preserve the original series order (10k, 50k, 100k, 200k); only
+        # replace entries that have data. Threads are expected in [1,2,4,8,16].
+        for _n, _rts in _new_rt.items():
+            if _n in RT and len(_rts) == len(THREADS):
+                RT[_n] = _rts
+        print(f"[plot_perf] Loaded realtime data from {_rt_data_path}")
+
+if os.path.isfile(_gil_data_path):
+    with open(_gil_data_path) as _f:
+        _gil = json.load(_f)
+    _native_sp = _gil.get("native_speedup")
+    _py_sp = _gil.get("py_thread_speedup")
+    if _native_sp is not None:
+        # Update the measured native-thread bar and the measured overlap point.
+        OVERLAP_BARS[2] = ("native thread (C/Rust/PyO3) in Run", _native_sp, "ceiling")
+        MEASURED_OVERLAP_PT = (10.0, _native_sp)
+    if _py_sp is not None:
+        OVERLAP_BARS[1] = ("Python thread during Run", _py_sp, "measured")
+    print(f"[plot_perf] Loaded GIL-overlap data from {_gil_data_path}")
 
 # --------------------------------------------------------------------------- #
 # 2. THEME TOKENS  (GitHub light / dark canvases; design-system §4 / §5)

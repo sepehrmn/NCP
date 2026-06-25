@@ -175,6 +175,8 @@ def main() -> None:
     p.add_argument("--shorten-above", type=int, default=200000,
                    help="for N >= this, shorten T_bio (rt_factor scaled to its own bio time)")
     p.add_argument("--shorten-to-ms", type=float, default=500.0)
+    p.add_argument("--out", type=str, default=None,
+                   help="write JSON results to this file (creates parent dirs)")
     args = p.parse_args()
 
     try:
@@ -186,7 +188,15 @@ def main() -> None:
             "directly, e.g. /opt/anaconda3/envs/p2b/bin/python -u bench_realtime.py")
 
     import json
-    print(json.dumps(sweep(args), indent=2))
+    result = sweep(args)
+    print(json.dumps(result, indent=2))
+
+    if args.out:
+        import os
+        os.makedirs(os.path.dirname(args.out) or ".", exist_ok=True)
+        with open(args.out, "w") as f:
+            json.dump(result, f, indent=2)
+        print(f"Wrote results to {args.out}", flush=True)
 
 
 if __name__ == "__main__":

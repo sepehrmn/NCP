@@ -130,6 +130,8 @@ def main() -> int:
     ap.add_argument("--reps", type=int, default=3)
     ap.add_argument("--poisson-hz", type=float, default=2800.0)
     ap.add_argument("--seed", type=int, default=12345)
+    ap.add_argument("--out", type=str, default=None,
+                    help="write JSON results to this file (creates parent dirs)")
     a = ap.parse_args()
 
     try:
@@ -201,6 +203,24 @@ def main() -> int:
           f"expected_native_s~={N*max(compute_ms,a.work_ms)/1000:.4f}")
     print("NOTE native thread (C pthread here) == Rust std::thread / PyO3 bg thread: "
           "no GIL, overlaps nest.Run; Python thread is GIL-bound.")
+
+    if a.out:
+        import json as _json, os as _os
+        _os.makedirs(_os.path.dirname(a.out) or ".", exist_ok=True)
+        report = {
+            "nest_version": nest.__version__,
+            "compute_ms": round(compute_ms, 2),
+            "chunk_ms": chunk, "work_ms": a.work_ms,
+            "n_chunks": N, "threads": a.threads, "n": a.n,
+            "serial_s": round(s, 4),
+            "native_overlap_s": round(no, 4),
+            "py_thread_overlap_s": round(pt, 4),
+            "native_speedup": round(s / no, 3),
+            "py_thread_speedup": round(s / pt, 3),
+        }
+        with open(a.out, "w") as f:
+            _json.dump(report, f, indent=2)
+        print(f"Wrote results to {a.out}", flush=True)
     return 0
 
 

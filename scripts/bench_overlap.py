@@ -171,6 +171,8 @@ def main() -> None:
                    help="modeled per-chunk transport RTT values to sweep")
     p.add_argument("--readout", type=int, default=1000)
     p.add_argument("--seed", type=int, default=12345)
+    p.add_argument("--out", type=str, default=None,
+                   help="write JSON results to this file (creates parent dirs)")
     args = p.parse_args()
 
     try:
@@ -203,8 +205,15 @@ def main() -> None:
         print("OVERLAP", json.dumps(row), flush=True)
 
     nest.Cleanup()
-    print(json.dumps({"nest_version": nest.__version__, "gil": gil,
-                      "results": results}, indent=2))
+    report = {"nest_version": nest.__version__, "gil": gil, "results": results}
+    print(json.dumps(report, indent=2))
+
+    if args.out:
+        import os
+        os.makedirs(os.path.dirname(args.out) or ".", exist_ok=True)
+        with open(args.out, "w") as f:
+            json.dump(report, f, indent=2)
+        print(f"Wrote results to {args.out}", flush=True)
 
 
 if __name__ == "__main__":
