@@ -37,30 +37,30 @@ impl InProcessTransport {
         Self::default()
     }
     pub fn push_sensor(&self, frame: SensorFrame) {
-        self.inner.lock().unwrap().latest_sensor = Some(frame);
+        self.inner.lock().unwrap_or_else(|e| e.into_inner()).latest_sensor = Some(frame);
     }
     pub fn last_command(&self) -> Option<CommandFrame> {
-        self.inner.lock().unwrap().last_command.clone()
+        self.inner.lock().unwrap_or_else(|e| e.into_inner()).last_command.clone()
     }
     pub fn commands(&self) -> Vec<CommandFrame> {
-        self.inner.lock().unwrap().commands.clone()
+        self.inner.lock().unwrap_or_else(|e| e.into_inner()).commands.clone()
     }
     pub fn statuses(&self) -> Vec<ControlStatus> {
-        self.inner.lock().unwrap().statuses.clone()
+        self.inner.lock().unwrap_or_else(|e| e.into_inner()).statuses.clone()
     }
 }
 
 impl ControlTransport for InProcessTransport {
     fn send_command(&self, command: &CommandFrame) {
-        let mut g = self.inner.lock().unwrap();
+        let mut g = self.inner.lock().unwrap_or_else(|e| e.into_inner());
         g.last_command = Some(command.clone());
         g.commands.push(command.clone());
     }
     fn latest_sensor(&self) -> Option<SensorFrame> {
-        self.inner.lock().unwrap().latest_sensor.clone()
+        self.inner.lock().unwrap_or_else(|e| e.into_inner()).latest_sensor.clone()
     }
     fn send_status(&self, status: &ControlStatus) {
-        self.inner.lock().unwrap().statuses.push(status.clone());
+        self.inner.lock().unwrap_or_else(|e| e.into_inner()).statuses.push(status.clone());
     }
 }
 

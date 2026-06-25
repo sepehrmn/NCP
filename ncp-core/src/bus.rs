@@ -74,13 +74,13 @@ impl Bus for LocalBus {
     fn declare_queryable(&self, key: &str, handler: QueryHandler) {
         self.queryables
             .lock()
-            .unwrap()
+            .unwrap_or_else(|e| e.into_inner())
             .push((key.to_string(), handler));
     }
 
     fn query(&self, key: &str, payload: &[u8]) -> Result<Vec<u8>, BusError> {
         let handler = {
-            let qs = self.queryables.lock().unwrap();
+            let qs = self.queryables.lock().unwrap_or_else(|e| e.into_inner());
             qs.iter()
                 .find(|(pat, _)| key_matches(pat, key))
                 .map(|(_, h)| h.clone())
@@ -92,12 +92,12 @@ impl Bus for LocalBus {
     }
 
     fn declare_subscriber(&self, key: &str, callback: SubCallback) {
-        self.subs.lock().unwrap().push((key.to_string(), callback));
+        self.subs.lock().unwrap_or_else(|e| e.into_inner()).push((key.to_string(), callback));
     }
 
     fn put(&self, key: &str, payload: &[u8]) -> Result<(), BusError> {
         let matched: Vec<SubCallback> = {
-            let subs = self.subs.lock().unwrap();
+            let subs = self.subs.lock().unwrap_or_else(|e| e.into_inner());
             subs.iter()
                 .filter(|(pat, _)| key_matches(pat, key))
                 .map(|(_, cb)| cb.clone())

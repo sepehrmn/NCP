@@ -473,7 +473,7 @@ impl ZenohBus {
             .await
             .map_err(err("declare subscriber"))?;
         // Keep the handle alive (dropping it undeclares the subscription).
-        self.subs.lock().unwrap().push(sub);
+        self.subs.lock().unwrap_or_else(|e| e.into_inner()).push(sub);
         Ok(())
     }
 
@@ -507,7 +507,7 @@ impl ZenohControlTransport {
         let sink = latest.clone();
         bus.subscribe_sensors(&session_id, move |_key, bytes| {
             match serde_json::from_slice::<ncp_core::SensorFrame>(&bytes) {
-                Ok(sf) => *sink.lock().unwrap() = Some(sf),
+                Ok(sf) => *sink.lock().unwrap_or_else(|e| e.into_inner()) = Some(sf),
                 // The data plane drops on parse failure; surface a diagnostic so a
                 // version-incompatible peer is observable, not silently ignored.
                 Err(e) => match ncp_core::diagnose_version(&bytes) {
@@ -540,7 +540,7 @@ impl ncp_core::ControlTransport for ZenohControlTransport {
     }
 
     fn latest_sensor(&self) -> Option<ncp_core::SensorFrame> {
-        self.latest.lock().unwrap().clone()
+        self.latest.lock().unwrap_or_else(|e| e.into_inner()).clone()
     }
 }
 
