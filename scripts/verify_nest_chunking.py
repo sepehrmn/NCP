@@ -32,7 +32,7 @@ WHAT IT PROVES (3 tests; --strict exits non-zero on any failure)
 
 REQUIRES NEST 3.x (3.9 recommended). Run the env interpreter directly with -u
   (NOT `conda run`, which buffers child stdout):
-      /path/to/envs/p2b/bin/python -u scripts/verify_nest_chunking.py --strict
+      /path/to/envs/engram/bin/python -u scripts/verify_nest_chunking.py --strict
 """
 from __future__ import annotations
 

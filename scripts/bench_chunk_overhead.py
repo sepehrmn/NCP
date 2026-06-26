@@ -54,7 +54,7 @@ REQUIRES NEST
 Needs a working NEST install (``import nest``). Benchmarked on NEST 3.8.0
 (OpenMP-only, single MPI rank). CLAUDE.md pins NESTML 8.2.0 → NEST 3.9 as the
 target; numbers may shift slightly on 3.9. Run the env interpreter DIRECTLY
-(e.g. ``/opt/anaconda3/envs/p2b/bin/python -u bench_chunk_overhead.py``) rather
+(e.g. ``/opt/anaconda3/envs/engram/bin/python -u bench_chunk_overhead.py``) rather
 than ``conda run`` — ``conda run`` fully buffers child stdout when redirected, so
 per-row progress never streams.
 
@@ -286,7 +286,7 @@ def main() -> None:
         raise SystemExit(
             "This benchmark REQUIRES NEST (import nest failed). "
             "Install NEST (benchmarked on 3.8.0) and run the env interpreter "
-            "directly, e.g. /opt/anaconda3/envs/p2b/bin/python -u "
+            "directly, e.g. /opt/anaconda3/envs/engram/bin/python -u "
             "bench_chunk_overhead.py")
 
     report = sweep(args)

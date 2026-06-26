@@ -31,7 +31,7 @@ EQUIVALENCE / FAIRNESS
 
 REQUIRES NEST (and a C compiler: cc/clang/gcc). Run the env interpreter directly
   (NOT `conda run`, which buffers child stdout):
-      /path/to/envs/p2b/bin/python -u scripts/bench_gil_overlap.py
+      /path/to/envs/engram/bin/python -u scripts/bench_gil_overlap.py
 
 EXAMPLE
       python -u scripts/bench_gil_overlap.py --n 8000 --threads 8 \

@@ -181,7 +181,7 @@ def main() -> None:
         raise SystemExit(
             "This benchmark REQUIRES NEST (import nest failed). "
             "Install NEST (benchmarked on 3.8.0) and run the env interpreter "
-            "directly, e.g. /opt/anaconda3/envs/p2b/bin/python -u bench_overlap.py")
+            "directly, e.g. /opt/anaconda3/envs/engram/bin/python -u bench_overlap.py")
     import nest
 
     rec = build_net(args.n, args.threads, args.indegree, args.seed, args.readout)
