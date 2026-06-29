@@ -290,6 +290,14 @@ impl SafetyGovernor {
                         return self.hold_frame(command);
                     }
                     Some(pos) => {
+                        // An empty position vector (e.g. a declared vec3 channel that
+                        // arrives with no data) makes r = sqrt(0) = 0 — "at the origin",
+                        // inside any fence — silently bypassing the geofence. Treat
+                        // missing data like an absent channel: fail closed (HOLD,
+                        // non-latching since the data may reappear).
+                        if pos.data.is_empty() {
+                            return self.hold_frame(command);
+                        }
                         let r = pos.data.iter().map(|c| c * c).sum::<f64>().sqrt();
                         // A non-finite `r` (NaN from upstream) fails safe to ESTOP
                         // rather than silently passing the `r > radius` comparison.
@@ -387,6 +395,12 @@ impl SafetyGovernor {
 /// Using the plant's own clock avoids controller↔plant clock skew. This is the
 /// deadline backstop the packetized-predictive-control horizon (see RESILIENCE.md)
 /// relies on: replay buffered predictions only while unexpired, HOLD on drain.
+/// Upper bound on an enforced command ttl. The wire field `ttl_ms` is unbounded,
+/// but the plant-side deadline backstop must stay finite: an absurdly large (or
+/// `+Inf`) ttl would let a single command keep the plant "live" indefinitely,
+/// defeating the watchdog. 60 s is far beyond any real control deadline.
+const MAX_TTL_MS: f64 = 60_000.0;
+
 #[derive(Clone, Debug, Default)]
 pub struct CommandWatchdog {
     last_recv_s: Option<f64>,
@@ -414,7 +428,15 @@ impl CommandWatchdog {
             self.last_seq = seq;
         }
         self.last_recv_s = Some(now_s);
-        self.ttl_s = ttl_ms.max(0.0) / 1000.0;
+        // Bound the enforced ttl: a non-finite `ttl_ms` (e.g. `+Inf`) makes
+        // `(now - t) > ttl_s` never true → the backstop never fires (fail-OPEN).
+        // Map non-finite to 0 (immediately stale) and clamp very large values to a
+        // finite ceiling. The wire still carries `ttl_ms` unchanged.
+        self.ttl_s = if ttl_ms.is_finite() {
+            ttl_ms.clamp(0.0, MAX_TTL_MS) / 1000.0
+        } else {
+            0.0
+        };
     }
 
     /// True if the plant must fail safe to HOLD: no command yet, or the latest is
@@ -466,6 +488,53 @@ mod tests {
         // The all-zero-seq escape hatch still refreshes (pull/sim streams).
         wd.on_command(1.5, 200.0, 0);
         assert!(!wd.should_hold(1.6), "seq=0 stream still refreshes");
+    }
+
+    #[test]
+    fn unbounded_or_nonfinite_ttl_still_expires() {
+        // +Inf ttl must NOT mean "never stale" (that would let one command keep
+        // the plant live forever — fail-OPEN). It is clamped to a finite ceiling.
+        let mut wd = CommandWatchdog::new();
+        wd.on_command(0.0, f64::INFINITY, 1);
+        assert!(
+            wd.should_hold(MAX_TTL_MS / 1000.0 + 1.0),
+            "a +Inf ttl must still expire past the finite ceiling"
+        );
+        // NaN ttl -> immediately stale (fail-safe).
+        let mut wd2 = CommandWatchdog::new();
+        wd2.on_command(0.0, f64::NAN, 1);
+        assert!(
+            wd2.should_hold(0.001),
+            "a NaN ttl is treated as immediately stale"
+        );
+    }
+
+    #[test]
+    fn empty_position_holds_under_geofence() {
+        let mut gov = SafetyGovernor::new(SafetyLimits {
+            geofence_radius_m: Some(10.0),
+            ..Default::default()
+        });
+        // A declared position channel that arrives with no data must not read as
+        // r = sqrt(0) = 0 ("at the origin", inside the fence) — fail closed to HOLD.
+        let mut ch = crate::messages::Map::new();
+        ch.insert(
+            "pose_position".to_string(),
+            ChannelValue {
+                data: vec![],
+                unit: Some("m".into()),
+            },
+        );
+        let sensor = SensorFrame {
+            channels: ch,
+            ..Default::default()
+        };
+        let out = gov.govern(&CommandFrame::default(), Some(&sensor), 1.0, Some(1.0));
+        assert_eq!(
+            out.mode,
+            Mode::Hold,
+            "an empty position vector must fail closed (HOLD), not bypass the geofence"
+        );
     }
 
     #[test]

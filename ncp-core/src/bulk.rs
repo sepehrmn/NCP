@@ -330,6 +330,13 @@ impl BulkBlock {
             return Err(BulkError::OutOfBounds);
         }
 
+        // Cumulative allocation budget: a conforming block lays its columns out
+        // disjointly, so the sum of every column's data_len <= total_len = bytes.len().
+        // Without this cap, columns with overlapping/duplicate data offsets can
+        // declare far more total payload than the input holds (decode_column
+        // allocates n_rows per column), enabling large memory amplification (OOM)
+        // from a tiny hostile block.
+        let mut alloc_budget = bytes.len();
         let mut columns = Vec::with_capacity(n_cols);
         for i in 0..n_cols {
             let base = HEADER_LEN + i * DIR_ENTRY_LEN;
@@ -354,6 +361,11 @@ impl BulkBlock {
                 return Err(BulkError::BadDtype(dtype));
             }
             let data_len = n_rows.checked_mul(width).ok_or(BulkError::Overflow)?;
+            // Charge this column against the cumulative budget: rejects overlapping /
+            // amplifying columns whose combined declared payload exceeds the input.
+            alloc_budget = alloc_budget
+                .checked_sub(data_len)
+                .ok_or(BulkError::OutOfBounds)?;
             let data_end = data_off.checked_add(data_len).ok_or(BulkError::Overflow)?;
             let data = bytes
                 .get(data_off..data_end)
@@ -472,6 +484,36 @@ mod tests {
             .with("times", Column::F64(vec![]))
             .with("senders", Column::I64(vec![]));
         assert_eq!(BulkBlock::decode(&with_empty.encode()).unwrap(), with_empty);
+    }
+
+    #[test]
+    fn decode_rejects_amplifying_overlap() {
+        // Two columns whose data regions OVERLAP and together declare more payload
+        // than the input holds. Each slice is individually in-bounds (so the
+        // per-column bounds check passes), but decode_column allocates n_rows per
+        // column — without the cumulative budget this is a memory-amplification
+        // (OOM) vector. The budget must reject it.
+        let total: usize = 2048;
+        let mut b = vec![0u8; total];
+        b[0..4].copy_from_slice(&BULK_MAGIC);
+        b[4] = BULK_VERSION;
+        b[5] = 0;
+        b[6..8].copy_from_slice(&2u16.to_le_bytes()); // n_cols = 2
+        b[8..12].copy_from_slice(&(total as u32).to_le_bytes());
+        let data_off: u32 = 44; // HEADER(12) + 2*DIR_ENTRY(16) = 44; names empty
+        let n_rows: u32 = 250; // 250 * 8 = 2000 bytes; 44 + 2000 = 2044 <= 2048 (in bounds)
+        for i in 0..2u32 {
+            let base = 12 + (i as usize) * 16;
+            b[base..base + 4].copy_from_slice(&data_off.to_le_bytes()); // name_off (len 0)
+            b[base + 4..base + 6].copy_from_slice(&0u16.to_le_bytes()); // name_len = 0
+            b[base + 6] = 2; // DTYPE_F64
+            b[base + 8..base + 12].copy_from_slice(&n_rows.to_le_bytes());
+            b[base + 12..base + 16].copy_from_slice(&data_off.to_le_bytes());
+        }
+        assert!(
+            BulkBlock::decode(&b).is_err(),
+            "overlapping columns whose combined payload exceeds the input must be rejected"
+        );
     }
 
     #[test]
