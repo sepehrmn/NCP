@@ -92,7 +92,10 @@ impl Bus for LocalBus {
     }
 
     fn declare_subscriber(&self, key: &str, callback: SubCallback) {
-        self.subs.lock().unwrap_or_else(|e| e.into_inner()).push((key.to_string(), callback));
+        self.subs
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .push((key.to_string(), callback));
     }
 
     fn put(&self, key: &str, payload: &[u8]) -> Result<(), BusError> {

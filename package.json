@@ -17,6 +17,7 @@
   "scripts": {
     "sync": "node ncp-ts/scripts/sync-bindings.mjs",
     "build": "tsc -p ncp-ts/tsconfig.json",
+    "check:behavior": "node ncp-ts/scripts/check-behavior.mjs",
     "regen": "cargo test -p ncp-core --features ts && node ncp-ts/scripts/sync-bindings.mjs && tsc -p ncp-ts/tsconfig.json",
     "clean": "rm -rf ncp-ts/dist"
   },

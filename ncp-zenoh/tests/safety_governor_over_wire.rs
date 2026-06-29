@@ -74,8 +74,11 @@ fn connect_cfg(port: u16) -> ZenohConfig {
 /// Load the `govern` cases from the shared behavioral corpus (same path the
 /// in-process conformance test uses; `conformance/` travels with the workspace).
 fn govern_cases() -> Vec<Value> {
-    let path = PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../conformance/behavior"))
-        .join("vectors.json");
+    let path = PathBuf::from(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../conformance/behavior"
+    ))
+    .join("vectors.json");
     let text = std::fs::read_to_string(&path)
         .unwrap_or_else(|e| panic!("read behavior corpus {}: {e}", path.display()));
     let corpus: Value =
@@ -306,8 +309,7 @@ async fn safety_governor_decisions_survive_the_wire() {
         "kind": "sensor_frame", "channels": {"pose_position": {"data": [10.0, 0.0, 0.0]}}
     }))
     .unwrap();
-    let estopped =
-        govern_over_wire(&client, &state, &sink, active_cmd.clone(), breach).await;
+    let estopped = govern_over_wire(&client, &state, &sink, active_cmd.clone(), breach).await;
     assert_eq!(
         estopped["mode"].as_str().unwrap(),
         "estop",

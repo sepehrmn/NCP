@@ -473,7 +473,10 @@ impl ZenohBus {
             .await
             .map_err(err("declare subscriber"))?;
         // Keep the handle alive (dropping it undeclares the subscription).
-        self.subs.lock().unwrap_or_else(|e| e.into_inner()).push(sub);
+        self.subs
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .push(sub);
         Ok(())
     }
 
@@ -540,7 +543,10 @@ impl ncp_core::ControlTransport for ZenohControlTransport {
     }
 
     fn latest_sensor(&self) -> Option<ncp_core::SensorFrame> {
-        self.latest.lock().unwrap_or_else(|e| e.into_inner()).clone()
+        self.latest
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
     }
 }
 
