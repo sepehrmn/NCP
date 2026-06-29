@@ -6,10 +6,10 @@
 //! (`engram/ncp/session/<id>/command`, realm overridable via NCP_REALM).
 //!
 //! The plant is a minimal quad model: it integrates the commanded velocity into a
-//! position, and it ENFORCES the protocol's two safety gates locally —
-//!   * `mode` ∈ {hold, estop}            -> de-energize (zero velocity)
-//!   * `ttl_ms` watchdog (no fresh cmd)  -> fail-safe to HOLD
-//! so a dropout or an e-stop visibly stops the drone.
+//! position, and it ENFORCES the protocol's two safety gates locally: `mode` in
+//! {hold, estop} de-energizes (zero velocity), and the `ttl_ms` watchdog fails
+//! safe to HOLD when no fresh command arrives — so a dropout or an e-stop visibly
+//! stops the drone.
 //!
 //! It prints the trajectory and also appends it as JSONL to
 //! $NCP_TRAJ_OUT (default ./ncp_drone_trajectory.jsonl) so an external consumer
@@ -55,8 +55,10 @@ async fn main() {
 
     // One in-process Zenoh session; loopback delivery (no external discovery).
     let mut cfg = ZenohConfig::default();
-    cfg.insert_json5("scouting/multicast/enabled", "false").unwrap();
-    cfg.insert_json5("scouting/gossip/enabled", "false").unwrap();
+    cfg.insert_json5("scouting/multicast/enabled", "false")
+        .unwrap();
+    cfg.insert_json5("scouting/gossip/enabled", "false")
+        .unwrap();
     let bus = ZenohBus::with_config(cfg, Keys::new(realm.clone()))
         .await
         .expect("open zenoh bus");
@@ -67,7 +69,10 @@ async fn main() {
     let sink = latest.clone();
     bus.subscribe_commands(session, move |_k, bytes| {
         if let Ok(frame) = serde_json::from_slice::<CommandFrame>(&bytes) {
-            *sink.lock().unwrap() = Some(LatestCmd { frame, arrived: Instant::now() });
+            *sink.lock().unwrap() = Some(LatestCmd {
+                frame,
+                arrived: Instant::now(),
+            });
         }
     })
     .await
@@ -162,20 +167,25 @@ async fn main() {
                 continue;
             }
             seq += 1;
-            let mut cmd = CommandFrame::default();
-            cmd.seq = seq;
-            cmd.t = t * 1000.0;
-            cmd.ttl_ms = 250.0; // ~5 missed frames at 20 Hz
-            cmd.mode = match *mode_s {
+            let mode = match *mode_s {
                 "active" => Mode::Active,
                 "hold" => Mode::Hold,
                 "estop" => Mode::Estop,
                 _ => Mode::Hold,
             };
-            cmd.channels.insert(
+            let mut channels = ncp_core::Map::new();
+            channels.insert(
                 "velocity_setpoint".to_string(),
                 ChannelValue::vec3(v[0], v[1], v[2], Some("m/s")),
             );
+            let cmd = CommandFrame {
+                seq,
+                t: t * 1000.0,
+                ttl_ms: 250.0, // ~5 missed frames at 20 Hz
+                mode,
+                channels,
+                ..Default::default()
+            };
             let payload = serde_json::to_vec(&cmd).unwrap();
             bus.publish_command(session, &payload).await.unwrap();
             tokio::time::sleep(period).await;
