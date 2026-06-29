@@ -67,6 +67,62 @@ enforcement is validated, the `SECURITY.md` "closed realm only" guidance stands.
 
 ---
 
+## P0 (near-term, no wire change) — Land the three high-severity hardening fixes
+
+[`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md) catalogs an adversarial audit of
+the SDK (correctness, safety, robustness, overhead): 35 line-referenced findings
+(3 high, 17 medium, 15 low), each tagged `safe` (internal) or `wire-breaking`
+(needs a version bump + consumer buy-in across Engram/crebain/prisoma). The three
+**high** findings are all `safe` — local correctness fixes that change no on-wire
+bytes, so they can land immediately without a wire bump or consumer coordination,
+and each turns a current *fail-open* into the intended *fail-closed*. Treat them as
+the top near-term work alongside the P0 auth gate above. (Per
+`KNOWN_LIMITATIONS.md` these are *proposals, not yet applied* — do not mark them
+fixed here until the patch and a covering regression test have landed.)
+
+1. **Bulk-decode OOM amplification — `bulk.rs:356` · safety · safe.**
+   `BulkBlock::decode` allocates per declared column with no cumulative budget, so
+   overlapping / duplicate column offsets let a small frame declare on the order of
+   ~64,000× its own size in allocations — an observation-plane OOM denial-of-
+   service. *Fix:* bound the running total of declared payload by the input length;
+   a conforming block lays its columns out disjointly (`sum(data_len) <=
+   bytes.len()`), so the budget rejects only amplifying blocks and accepts every
+   well-formed one. This is the bulk/observation analysis plane — the binary
+   `BulkBlock` path — not the JSON hot loop.
+
+2. **Watchdog defeated by an unbounded / non-finite `ttl_ms` —
+   `safety.rs:417` (and the `+Inf` path at `safety.rs:432`) · safety · safe.** The
+   `CommandWatchdog` deadline backstop trusts the wire `ttl_ms` verbatim
+   (`self.ttl_s = ttl_ms.max(0.0) / 1000.0`), so a huge or `+Inf` value disables
+   the staleness deadline outright — a single command can permanently pin the
+   actuator "live," defeating the very fail-safe `SECURITY.md` leans on as defense-
+   in-depth. *Fix:* clamp the enforced ttl to a finite documented maximum and map a
+   non-finite `ttl_ms` to 0 (immediately stale). The wire still carries `ttl_ms`
+   unchanged; only local enforcement is bounded.
+
+3. **Empty position channel bypasses the geofence — `safety.rs:293` · safety ·
+   safe.** An empty position-channel vector yields `r = 0`, so a malformed or
+   dropped position frame reads as "at the origin, inside the fence" instead of
+   failing safe — the opposite of the adjacent `None`-channel arm, which correctly
+   HOLDs. *Fix:* treat an empty position vector like a missing channel (HOLD),
+   mirrored at the `horizon` look-ahead (`safety.rs:338`). This is a concrete,
+   *non-adversarial* instance of the geofence-defeat risk `SECURITY.md` already
+   flags for spoofed / false-data-injection sensor frames: here a merely malformed
+   frame silently slips the fence.
+
+*Why these sit beside P0 rather than under P3:* P0 above secures *who* may command;
+these secure what the safety governor and bulk decoder do with a *malformed or
+adversarial* frame once it is admitted. Both are prerequisites for any deployment
+beyond a trusted, closed realm — but unlike the mTLS/ACL P0, these need **no live
+infrastructure** to close, only the patch and a test, which is why they are the
+cheapest high-value safety work available now. The audit's `medium` /
+`wire-breaking` findings (e.g. per-verb RPC ACL, `ncp_version` enforcement on the
+data plane, the `seq==0` anti-replay escape hatch) map onto the P1/P2 sections
+below and inherit their version-bump + consumer-coordination cost.
+
+
+---
+
 ## P1 — Identity & capability negotiation
 
 - **Replace the ad-hoc self-asserted id with a standards-grade identity.** Adopt
@@ -194,6 +250,27 @@ interop gates + the neutral-home path.
   this is P3 deliberately: **measure before optimizing**, and do not claim latency
   leadership (a software NEST-over-Zenoh loop will not approach on-chip neuromorphic
   figures, which are task-specific demos).
+
+- **The "measure first" gate is now met — and the verdict is "the contract is
+  nearly free."** The audit added the repo's first release microbenchmark
+  (`ncp-core/examples/overhead.rs`; the repo previously had none), which puts
+  numbers on the per-tick SDK cost: a full control tick is **~1 µs** (CommandFrame
+  serialize 248 ns / deserialize 446 ns at 215 B; SensorFrame 223 / 474 ns at
+  195 B; `SafetyGovernor::govern` 140 ns; `ReflexController::step` 134 ns), with
+  transport at ~0.1 ms on a Zenoh loopback (tens of µs over SHM). Against a
+  20–1000 Hz control budget that is **0.003–0.1%** of the tick — NEST / in-sim
+  compute dominates by orders of magnitude, so the typed-contract-plus-safety-
+  governor is **not** meaningful overhead and removing NCP would not buy a faster
+  loop. The performance work that remains is therefore the **`safe`,
+  `overhead`-tagged items in [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md)**, not
+  a redesign. The single highest-value one: `ncp-zenoh`'s `ZenohBus::put` calls
+  `payload.to_vec()` on every publish (`lib.rs:441`), copying the whole serialized
+  frame and **defeating the SHM zero-copy that is already enabled** — moving the
+  owned buffer into Zenoh `ZBytes` removes one full per-frame copy with no wire
+  change. JSON stays the debuggable default; an opt-in *negotiated* binary control-
+  frame codec (or protobuf) is worth adding only if a kHz / bandwidth-constrained
+  consumer actually needs it (the additive path sketched in the `messages.rs:794`
+  backlog item, mirroring how `BulkBlock` was added for observations).
 
 ---
 

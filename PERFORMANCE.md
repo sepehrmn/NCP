@@ -44,11 +44,114 @@ Result: per-step readback is **O(1)** for rate and **O(new events)** for spikes/
 | **`nest.Run(chunk)`** | **dominant; model-size dependent** | the science; NCP doesn't touch it |
 | readback | **O(1)** rate / **O(new)** spikes-V_m | was O(history) — fixed |
 | encode/decode (codec) | negligible | linear rate map |
-| serialize | rates: tens of bytes; raw spikes: O(events) | **prefer rate for the loop**; raw spikes are the analysis path |
+| serialize | rates: tens of bytes; raw spikes: O(events) | **prefer rate for the loop**; raw spikes are the analysis path. JSON frame ser/de is **~0.2–0.5 µs** (measured — see [NCP's own per-tick overhead](#measured-ncps-own-per-tick-overhead-rust-release)) |
 | transport | in-proc ~µs · Zenoh SHM ~tens µs · Zenoh/loopback ~0.1 ms · WS+JSON ~0.2–1 ms | far below a 20–50 Hz (20–50 ms) budget |
 
 For a UAV outer-loop (20–50 Hz) with rate-coded I/O, `T_ncp` is sub-millisecond
 and **`T_run` dominates**. NCP adds no meaningful slowdown.
+## Measured: NCP's own per-tick overhead (Rust, release)
+
+The sections above ask whether NCP slows *NEST*. The complementary question a
+fleet integrator asks is whether NCP itself — the contract, the codec, the safety
+gate — is heavy. It is not, and the word "negligible" in the cost model above now
+has a number behind it. [`ncp-core/examples/overhead.rs`](ncp-core/examples/overhead.rs)
+times the exact hot-path operations a controller runs **every tick** — JSON
+(de)serialization of the action/perception frames, the safety governor, and the
+reflex controller — on the **release** build, with warmup and `black_box` to
+defeat dead-code elimination.
+
+| hot-path op (per tick)                | cost   | frame size |
+|---------------------------------------|--------|------------|
+| `CommandFrame` serialize (serde_json) | 248 ns | 215 B      |
+| `CommandFrame` deserialize            | 446 ns | 215 B      |
+| `SensorFrame` serialize               | 223 ns | 195 B      |
+| `SensorFrame` deserialize             | 474 ns | 195 B      |
+| `SafetyGovernor::govern`              | 140 ns | —          |
+| `ReflexController::step`              | 134 ns | —          |
+
+A full closed-loop tick — deserialize the inbound `SensorFrame`, step the reflex
+controller, run the safety governor, serialize the outbound `CommandFrame` — sums
+to **≈1 µs** of CPU (474 + 134 + 140 + 248 ≈ 996 ns). Frames are **≈200 bytes** on
+the JSON action/perception planes. Transport then adds the per-hop term from the
+cost model: **≈0.1 ms** on a Zenoh loopback hop, **tens of µs** over shared memory,
+~µs in-process.
+
+> **Reproduce:** `cargo run -p ncp-core --release --example overhead`
+> (`--release` is load-bearing — a debug build is 10–50× slower and not
+> representative of shipped overhead). This is the repo's first committed Rust
+> overhead bench; the three NEST-side Python benchmarks are documented under
+> [Benchmark methodology & reproducibility](#benchmark-methodology--reproducibility).
+
+This also confirms why **JSON is the right runtime default** (see
+[`RATIONALE.md`](RATIONALE.md)). At ≈1 µs/tick the serializer is nowhere near the
+bottleneck, and JSON stays human-readable on the wire and trivially debuggable.
+The protobuf schema in [`proto/ncp.proto`](proto/ncp.proto) (+ `gen/rust`) is the
+**contract / conformance source-of-truth**, *not* the shipped runtime encoding —
+the `prost` bindings are not compiled into the runtime path. Binary protobuf would
+be worth negotiating only as an opt-in for a kHz / bandwidth-constrained consumer.
+The one binary path that *is* shipped is the bulk observation codec (`BulkBlock`),
+which `overhead.rs` also measures as more compact than JSON for the same numeric
+array (≈2× smaller with `f32`/`i32` columns) — and it is carried **only** on the
+analysis plane, never the hot action loop.
+
+### Is NCP unnecessary overhead?
+
+**No — and it is now quantified.** A control loop runs at 20–1000 Hz, i.e. a
+**50 ms → 1 ms** budget per tick. NCP's own per-tick CPU cost is **≈1 µs**, so the
+NCP tax is a vanishing fraction of that budget:
+
+| control rate | period | NCP CPU tax (≈1 µs) |
+|--------------|--------|---------------------|
+| 20 Hz        | 50 ms  | ≈0.002 %            |
+| 100 Hz       | 10 ms  | ≈0.01 %             |
+| 1000 Hz      | 1 ms   | ≈0.1 %              |
+
+Transport is a separate, deployment-dependent term: a Zenoh loopback hop
+(≈0.1 ms) is comfortable up to a few hundred Hz; at kHz rates co-locate the
+controller in-process (~µs) or use SHM (tens of µs). Either way the dominant cost
+in a neuro-cybernetic loop is the **simulation / in-sim compute** (`nest.Run`, the
+NEST kernel) and — for a networked fleet — the **transport hop**, not NCP's
+serialize-and-check.
+
+What that ≈1 µs buys is the entire point: a stable cross-language **contract**
+(one wire shape shared by Engram, crebain, and prisoma), per-tick **safety
+gating** (`SafetyGovernor`: speed / geofence / timeout / health), and a generic
+**hub-interop** surface so Engram can drive a UAV or a robot through the same
+three planes. Deleting NCP would not reclaim a meaningful slice of the loop
+budget — it would only delete the contract and the safety gate. So NCP is **not**
+unnecessary overhead: it is a sub-microsecond tax for the safety and interop that
+make a multi-consumer fleet possible.
+
+### Top safe optimization: zero-copy publish (ZBytes/SHM)
+
+The highest-value **safe** (non-wire-breaking) optimization on the transport side
+is in [`ncp-zenoh`](ncp-zenoh): `ZenohBus::put` copies the payload on **every**
+publish.
+
+```rust
+// ncp-zenoh/src/lib.rs:441
+self.session.put(key, payload.to_vec())   // clones an already-owned Vec<u8>
+```
+
+The caller (`send_command` / `publish_command` / RPC) already owns the serialized
+`Vec<u8>`; `payload.to_vec()` clones the whole frame a second time for nothing.
+Moving the owned buffer into Zenoh `ZBytes` — e.g. a
+`put_owned(key, payload: Vec<u8>, plane)`, or making `put` generic over
+`impl Into<ZBytes>` — removes one alloc+copy of the full frame per publish with
+**no change to the wire bytes**. It is also the prerequisite for true SHM
+**zero-copy** delivery on the action plane: a `to_vec()` into a fresh heap `Vec`
+cannot be handed to the shared-memory path without a copy, so this single change
+unblocks the zero-copy fast path the QoS layer is already set up for. At ≈200 B /
+frame the copy is cheap in absolute terms, but it is pure waste on the
+latency-critical action loop and trivially removable. JSON stays the debuggable
+default; this is an encoding-neutral transport win.
+
+This and 34 other audited findings are catalogued in
+[`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md) (3 high-severity, incl. a `bulk.rs`
+decode OOM/DoS, an unbounded / `+Inf` `ttl_ms` fail-**open** watchdog, and an
+empty-position geofence bypass). **None are fixed yet** — they are conservative,
+tracked proposals, because NCP is a shared contract.
+
 
 ## Secondary considerations (not bottlenecks, documented)
 
@@ -389,3 +492,9 @@ the command, the environment, and the known caveats.
   your NEST 3.9 build; otherwise that path stays O(history) (use `RATE`).
 - Large-population multimeter recording is intrinsically heavy regardless of NCP;
   record from a representative subset (the backend already pins V_m to one neuron).
+- A full adversarial audit of NCP (correctness, safety, robustness, overhead) is
+  catalogued in [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md) — **35 findings, 3
+  high-severity**. They are **proposals, not yet applied**; treat that file as the
+  live risk register, not a list of fixed bugs. The top *performance* item there
+  (the `ncp-zenoh` `payload.to_vec()` copy) is discussed in
+  [Top safe optimization](#top-safe-optimization-zero-copy-publish-zbytesshm) above.

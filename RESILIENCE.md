@@ -34,7 +34,11 @@ case**, not the only case.
 check. Every resilience idea below assumes the deadline backstop exists, so
 **enforcing `ttl_ms` plant-side is item 0** (a `CommandWatchdog` primitive now
 ships in `ncp-core::safety` — see below — so the plant can HOLD on an expired or
-missing command).
+missing command). **Caveat — the shipped watchdog enforces `ttl_ms` but does not
+yet *bound* it: an unbounded (huge) or non-finite (`+Inf`) `ttl_ms` leaves the
+backstop fail-OPEN (and `+Inf` permanently disables it). See the first-principles
+note at the end of this doc and `KNOWN_LIMITATIONS.md` (`safety.rs:417`,
+`safety.rs:432`); not yet fixed.**
 
 ## The layered design (what survives the pruning)
 
@@ -175,6 +179,20 @@ important thing NCP can do is detect goodput collapse and fail safe honestly.
 
 ## Minimal first implementation (corrected order)
 
+> **Status (wire v0.5.2).** Steps 0–2 now ship as tested `ncp-core` primitives,
+> re-exported from the crate root: `CommandWatchdog` (the `ttl_ms` deadline
+> backstop), `ActionBuffer` + `max_horizon_len` (PPC horizon replay, capped at
+> `N ≤ ttl_ms / horizon_dt_ms`), and `LinkMonitor` (seq-gap loss + CUSUM burst →
+> `LinkStatus`). Step 3's jam latch ships as `SafetyGovernor::note_link(burst)`
+> (today the trip is the CUSUM `burst` flag; the `p̂ < p_c` / goodput-collapse
+> gating remains the documented target). What is *not* done: the residual
+> ttl-bounding fix (below), step 4's PID priorities (offline), and — crucially —
+> the **consumer wiring**. NCP ships and unit-tests the mechanism; it cannot HOLD
+> an actuator it does not own, so each consumer (Engram-as-hub, crebain, prisoma)
+> must call these in its own actuator/telemetry loop. The numbered list below
+> therefore now reads as the *integration* order, not a from-scratch build list.
+
+
 0. **Enforce `ttl_ms`** plant-side (`CommandWatchdog` in `ncp-core::safety` — done;
    wire it into the actuator handler).
 1. **PPC horizon** on `CommandFrame` (`horizon` field), actuator buffer keyed on
@@ -187,3 +205,81 @@ important thing NCP can do is detect goodput collapse and fail safe honestly.
 
 No new dependencies, no wire-breaking edits — additive `Option`/`Vec` fields and
 `ncp-core` logic only.
+
+## First-principles: the three plant-side primitives (and the ttl fail-OPEN gap)
+
+Stripped to essentials, degraded-link resilience in NCP is three small,
+dependency-light primitives plus one cap. They are deliberately *library*
+primitives in `ncp-core` (`ActionBuffer`, `CommandWatchdog`, `LinkMonitor`,
+`max_horizon_len`, and `SafetyGovernor::note_link`): NCP is a generic, shared
+contract, so it ships and tests the **mechanism**, while each consumer wires the
+**policy** into the loop it actually owns. Understanding *why* each exists matters
+more than the code.
+
+### Why horizon replay works — and why it must be bounded
+First principle: a sampled-data control loop diverges not the instant a packet is
+lost, but when the plant has *no fresh setpoint to actuate on* before its state
+escapes the basin the last good command put it in. So the cheapest robustness is
+not retransmission (too slow for a deadline) and not parity/FEC (pointless for a
+1–3-symbol payload) — it is **having the next setpoints already in hand**.
+Packetized predictive control sends a short *horizon* of future setpoints per
+`CommandFrame`; the plant-side `ActionBuffer` replays `horizon[i]` on tick `i`
+through a dropout, so one lost packet — and, via overlapping horizons, a short
+burst — becomes a non-event. This is the anytime/causal-streaming structure for
+free, using only the `seq` already on the wire; no new redundancy field.
+
+The load-bearing catch: a replayed prediction is **open-loop dead-reckoning**. If a
+disturbance hits during the blackout, replay actively commands the wrong thing and,
+on an unstable mode, diverges. Hence the hard cap `N ≤ ttl_ms / horizon_dt_ms`
+(`max_horizon_len`): the replay can never outlive the very deadline that says "this
+command is stale." Each entry carries a per-tick expiry; on drain, `ActionBuffer`
+returns `None` and the plant HOLDs. Ride-through is therefore *exactly*
+`N · horizon_dt_ms` and not one tick more — a property you can state, bound, and
+test, which is the whole point of putting it in the contract.
+
+### Why the ttl watchdog is the backstop everything else rests on
+First principle: every layer above assumes a deadline beneath it. PPC is only safe
+*because* HOLD fires when the horizon outlives `ttl_ms`; the staged fail-safe is
+only meaningful *because* a missing command eventually counts as expired. The
+`CommandWatchdog` is that floor. Three design choices make it trustworthy: it uses
+the **plant's own clock** (no controller↔plant clock-skew to exploit); it refreshes
+the deadline **only on a strictly-advancing `seq`**, so a trickle of
+replayed/stale frames cannot keep the plant "fresh" forever; and it treats a
+**non-finite clock as expired** — failing *closed* on a bad clock rather than
+letting `NaN` comparisons read as "not expired."
+
+> **Residual fail-OPEN gap (not fixed — see `KNOWN_LIMITATIONS.md`).** The watchdog
+> sanitizes the *clock* but does **not** bound the *deadline*. `on_command` stores
+> `ttl_ms.max(0.0)/1000.0` verbatim, so:
+> - an **unbounded / very large** `ttl_ms` makes the plant treat an arbitrarily
+>   stale command as live — the deadline backstop is effectively fail-OPEN
+>   (`safety.rs:417`, high severity, `safe` to fix);
+> - a single **non-finite `+Inf`** `ttl_ms` sets `ttl_s = +Inf`, so `(now − t) >
+>   ttl_s` is never true and the backstop is **permanently disabled** by one frame
+>   (`safety.rs:432`, `safe` to fix);
+> - relatedly, `max_horizon_len` returns `usize::MAX` for a non-finite/huge
+>   `ttl_ms` and is only advisory (`resilience.rs:110`).
+>
+> Until this is addressed, a conformant plant should sanitize locally: map a
+> non-finite `ttl_ms` to `0` (= immediately stale) and clamp large values to a
+> documented maximum (e.g. derived from `SafetyLimits.command_timeout_ms`). The
+> wire still carries `ttl_ms` unchanged; only local *enforcement* is bounded.
+
+### Why the link monitor only detects, and the governor decides
+First principle: separate measurement from policy so each is independently
+testable. `LinkMonitor` does measurement only — it estimates loss from `seq`-gaps
+(as a fraction of the seqs that *should* have arrived, reconciling out-of-order
+arrivals so a merely-reordered link is not slandered) and runs a **CUSUM**
+change-point test to separate ordinary random loss (poor connection) from a
+sustained burst (possible jam), emitting a `LinkStatus`. It never actuates. The
+*decision* lives in one place: `SafetyGovernor::note_link(burst)` latches ESTOP on
+a jam burst, so a jammed craft de-energizes instead of coasting on stale
+predictions. This keeps the detector free of safety side-effects and the fail-safe
+policy auditable in a single state machine.
+
+The PHY boundary still bounds all three: app-layer schemes buy exactly the PPC
+ride-through window and no more. Under a wideband jam that drives goodput to ~0 for
+longer than `N · horizon_dt_ms`, the only correct behavior is the fail-safe —
+detect the collapse and HOLD→ESTOP honestly; frequency-hopping/DSSS is the radio's
+job, not NCP's.
+

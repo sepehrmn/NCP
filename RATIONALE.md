@@ -41,6 +41,32 @@ perception, action, both, or neither. Every observation carries
 `is_simulation_output=true` and `calibrated_posterior=false`: a neuro-controller
 is a control artifact, never a paper-reproduction claim.
 
+### One contract, many consumers (the generic-hub design)
+
+NCP is deliberately **generic** — it bakes in *no* consumer-specific assumptions —
+so a single wire contract serves an open, independently-developed set of peers. The
+reference topology is **hub-and-bodies**: a *commander/hub* (a NEST spiking brain)
+drives one or more *bodies* (robots/UAVs) and is watched by read-only *observers*.
+The contract names none of them; the commander core speaks only
+entity/channel-addressed NCP (see `INTEGRATING.md`). The shipped consumers
+illustrate the point:
+
+- **Engram** (a.k.a. Paper2Brain) is the **hub / command-center**: a NEST
+  spiking-simulation backend that drives robots and UAVs **interchangeably through
+  NCP**. It is *an* NCP commander, not *the* protocol.
+- **crebain** is a tactical-UAV consumer that runs **standalone** on its own drone
+  system **and/or** over NCP alongside other peers ("both or either") — the same
+  app body works with or without the hub.
+- **prisoma** is another consumer: a read-only analysis/observer client.
+
+The first-principles payoff: because the contract is generic, a body written
+against it (crebain) and a brain written against it (Engram) interoperate *without
+either knowing the other exists* — the same property that lets an observer attach
+for free. The cost is the one this document concedes throughout: a generic contract
+earns its keep only when the consumers are genuinely heterogeneous, multi-language,
+and non-ROS; for a single ROS-2 stack the composition alternative is cheaper to own.
+
+
 ## Why existing solutions were insufficient
 
 Almost none of the surveyed technologies are alternatives *at the same layer*.
@@ -74,6 +100,41 @@ provenance. **Every latency, conflation, priority, P2P-no-broker, and
 fleet/many-to-many property NCP enjoys is Zenoh's, not NCP's** (see the lens
 disclaimer below). Zenoh is the layer NCP sits on, not a competitor.
 
+### Why Zenoh specifically — features, not raw latency
+
+Choosing Zenoh is a **feature** decision, not a latency one, and saying so plainly
+avoids a claim NCP cannot defend. Zenoh is **transport only** — it carries the
+three pub/sub planes plus the queryable RPC plane and contributes none of the
+neural/provenance/safety semantics. What it *does* contribute is exactly the
+feature set the four-plane design needs out of the box:
+
+- **Per-plane QoS** — action is express / RealTime priority / DROP, perception is
+  DataHigh / DROP (conflating to the freshest sample), control is reliable / BLOCK.
+  One bus, three reliability/priority regimes.
+- **Queryable RPC** — request/reply for the control plane without bolting a second
+  protocol onto the data bus.
+- **Topology freedom** — P2P or routed, late-joining subscribers, many-to-many
+  fleet fan-out, and a read-only observer that attaches for free.
+- **SHM zero-copy** for large same-host payloads, and **ROS 2 interop** via
+  `rmw_zenoh` so existing robot/UAV clients are first-class.
+
+On *raw* latency Zenoh is **not** the leader, and NCP does not pretend otherwise:
+in single-machine 64-byte ping-pong a tuned DDS reaches ~8 µs versus Zenoh-p2p
+~10 µs — roughly a **~2 µs tax** for the feature set (see `PERFORMANCE.md`). That
+tax is invisible against the real budget: NCP compute per control tick is ~1 µs,
+transport is ~0.1 ms on Zenoh loopback / tens of µs over SHM, and in-simulation
+NEST compute dominates by orders of magnitude (0.003–0.1 % of a 20–1000 Hz
+budget). Zenoh is chosen because its *features* collapse what would otherwise be a
+hand-rolled broker, not because it wins a microbenchmark.
+
+One safe, wire-neutral optimization is worth flagging here so the "features" choice
+isn't read as "free": `ZenohBus::put` (`ncp-zenoh/src/lib.rs:441`) currently does
+`payload.to_vec()` on every publish, copying each frame and **defeating the SHM
+zero-copy that is otherwise enabled**; moving to Zenoh's `ZBytes`/SHM path removes
+that per-frame copy with no change to the wire. See `KNOWN_LIMITATIONS.md` for the
+audited robustness findings on the bus and safety paths.
+
+
 **MAVLink / MAVROS.** MAVLink owns the UAV actuation edge NCP must *target*
 (`CommandFrame` → `SET_POSITION_TARGET` into PX4/ArduPilot via MAVROS), and its
 lossy-link tolerance far exceeds anything NCP specifies. But its vocabulary is
@@ -87,6 +148,47 @@ late-joining subscriber, no conflation, no topic discovery** — you would hand-
 a pub/sub broker for the data planes — and HTTP/2/TCP is unfit for the hot action
 loop. gRPC could replace NCP's *control plane*; you would still need a data-plane
 bus and the neural/provenance layer.
+
+### What the wire actually is — JSON by default, protobuf as the schema
+
+A recurring overstatement worth correcting precisely: **protobuf is NCP's schema
+contract, not its shipped runtime encoding.** `proto/ncp.proto` (plus the `gen/`
+parity output) is the IDL, the conformance source-of-truth, and the `buf breaking`
+gate — but its prost Rust bindings are **not compiled or wired as a runtime path**
+(there is no `prost` dependency in the workspace, and `gen/rust` is not a workspace
+member). What actually travels on the live planes is:
+
+- **JSON (`serde_json`)** on the Sensor (perception), Command (action), and RPC
+  (control) planes — the `ncp-core` message types are plain `serde` structs, and
+  `ZenohBus` ships their JSON bytes.
+- a **binary `BulkBlock` columnar codec** (`ncp-core/src/bulk.rs`) for the bulk
+  observation/analysis plane, where many same-typed numeric columns make a
+  fixed-width, parse-free layout worth surrendering human-readability.
+
+Why JSON is the right *default*, from first principles:
+
+1. **Debuggable on the path you least want to guess about.** A safety-gated action
+   frame is human-readable on the wire — a `zenohd`/log tap or the WebSocket
+   fallback shows the actual `mode`/`ttl_ms`/channel values directly.
+2. **Polyglot at zero codegen.** Every peer already has a JSON reader: Python (PyO3
+   JSON in/out), C/C++ (JSON over the C ABI), and TS (ts-rs types over a BYO
+   transport) interoperate with no protoc/buf build step in each consumer.
+3. **One contract, two projections.** The `.proto` and the `schemas/` JSON Schemas
+   are kept in lockstep by parity guards, so protobuf's schema discipline is
+   retained even though the bytes are JSON.
+
+Why protobuf still earns its place: it is the **machine-checkable contract** that
+pins field numbers and types so the JSON projection cannot silently drift. And the
+overhead numbers show JSON is not the reason to switch: a full control tick is on
+the order of ~1 µs (≈200-byte frame JSON serialize/deserialize in the
+low-hundreds of nanoseconds, measured release), transport is ~0.1 ms on Zenoh
+loopback / tens of µs over SHM (see `PERFORMANCE.md`), and in-simulation NEST
+compute dominates by orders of magnitude — 0.003–0.1 % of a 20–1000 Hz budget. A
+binary protobuf runtime is therefore an **opt-in, negotiated encoding** for a
+future kHz- or bandwidth-constrained consumer, addable the way `BulkBlock` was
+(advertised in the capability handshake, JSON staying the always-available
+default) — not a correctness or default-performance need.
+
 
 **dm_env_rpc / MCP / ACP / A2A.** The most conspicuous near-peer is **dm_env_rpc**
 (DeepMind) — a gRPC/protobuf protocol for serving RL environments across the wire,
@@ -218,8 +320,7 @@ domain IDs, discovery); NCP inherits it via Zenoh and neither adds nor improves 
 it — and inherits its **unsolved multi-writer / who-steps-when coordination**
 (cf. PettingZoo AEC-vs-Parallel), which NCP exposes but does not resolve.
 
-**4. Transport-agnosticism & medium choice.** *Advantage:* the wire is
-JSON/protobuf, identical across transports. *Disadvantage:* agnosticism is partly
+**4. Transport-agnosticism & medium choice.** *Advantage:* the shipped runtime wire is JSON (`serde_json`) — with a binary `BulkBlock` columnar codec for the bulk observation/analysis plane — byte-identical across transports; `ncp.proto` is the schema/IDL **contract** and conformance source-of-truth, **not** the compiled runtime encoding (no `prost` dependency; `gen/rust` is not a workspace member), so protobuf could become an opt-in *negotiated* binary wire without changing the contract. *Disadvantage:* agnosticism is partly
 aspirational — the only shipped transport is `ncp-zenoh`; Zenoh is native and does
 not compile to browser WASM (TS gets *types* via ts-rs, but the browser transport
 is BYO WebSocket); DDS's safety-pedigreed QoS is an unexercised alternative.
@@ -307,7 +408,10 @@ latency leadership. Transport-agnosticism is Zenoh-only today; the TS peer is th
 least-unified; observer D-alignment is best-effort; the PROV/RO-Crate archive is
 unshipped; and the **composition alternative (`rmw_zenoh` + `neuro_msgs` + a
 watchdog) is a real, cheaper-to-own option** that a ROS-2-standardized team should
-prefer.
+prefer. A standing audit — `KNOWN_LIMITATIONS.md` — catalogs 35 findings (3 high: a
+`bulk.rs` decode OOM/DoS, a fail-OPEN watchdog on unbounded/`+Inf` `ttl_ms`, and an
+empty-position geofence bypass); these are **open, not fixed**, and the relevant
+sections above cross-reference them.
 
 ## What NCP deliberately borrows
 

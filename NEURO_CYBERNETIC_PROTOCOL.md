@@ -16,8 +16,9 @@ more"). One protocol, two complementary interaction patterns:
    an external actuator as "just another controller" over the system's *existing*
    transport (e.g. a robot/UAV client's MAVROS setpoint topics), non-invasively.
 
-Normative wire contract: `proto/ncp.proto` (proto-native; the JSON Schemas are its
-JSON projection). The wire is **simulator-agnostic** — the typed record/stimulus
+Normative **schema** contract: `proto/ncp.proto` (proto-native; the JSON Schemas
+are its JSON projection — and **JSON, not protobuf binary, is the shipped runtime
+encoding**; see §5A). The wire is **simulator-agnostic** — the typed record/stimulus
 vocabulary are abstract SNN concepts a `SimulationBackend` maps to its simulator
 (NEST today; NEURON/Brian2/GeNN are a future *backend*, no wire change — see
 [`ROADMAP.md`](ROADMAP.md)). Reference implementations:
@@ -37,11 +38,16 @@ vocabulary are abstract SNN concepts a `SimulationBackend` maps to its simulator
   this behind the Rust gateway).
 
 Machine-readable contract (proto-native): the protobuf IDL `proto/ncp.proto` is
-the **normative wire contract** — the single source of truth for message structure
-and the binary encoding. The **JSON Schemas** `schemas/*.schema.json` are its JSON
-projection (parity-guarded by `scripts/check_proto_schema_parity.py`), and the
-Rust/Python/TS bindings generate from or conform to it via buf. All reference
-implementations serialize to the **same** wire, so they interoperate. This
+the **normative schema** — the single source of truth for message structure, field
+numbers, types, and enum wire strings — and the conformance authority every binding
+is checked against. It *defines* a protobuf binary encoding, but that encoding is
+**not what the reference SDK currently ships** (see §5A). The **JSON Schemas** `schemas/*.schema.json` are its JSON
+projection (parity-guarded by `scripts/check_proto_schema_parity.py`); `ncp-core`'s
+Rust `serde` types conform to it (`ncp-core/tests/conformance.rs`), and the
+`prost`/`ts-proto`/`protobuf-python` outputs under `gen/` are **preview** codegen
+(gitignored, not workspace members, no `prost` runtime dependency), not the shipped
+path. All reference implementations serialize to the **same** wire — **JSON** today
+(§5A) — so they interoperate. This
 document is the human-readable spec.
 
 > **Why NCP exists** (unbiased rationale vs ROS 2/DDS, Zenoh, MUSIC, the
@@ -182,8 +188,11 @@ service. `SafetyLimits` bound commands and a stale sensor forces `HOLD`.
 ## 5. Transport bindings (and why)
 
 NCP separates the **contract** from the **medium**. The contract is proto-native:
-the **protobuf IDL** `proto/ncp.proto` is the normative source of truth, and the
+the **protobuf IDL** `proto/ncp.proto` is the normative *schema* source of truth, and the
 **JSON Schemas** in `schemas/` are its JSON projection (kept in parity, CI-guarded).
+The serialization shipped on every medium below is **JSON** (plus the binary
+`BulkBlock` for bulk observations); protobuf *binary* is defined by the schema but is
+**not** a wired runtime encoding today — see §5A.
 The medium is a per-deployment choice behind the `Transport` abstraction — do
 **not** marry NCP to one wire. With many heterogeneous projects this matters; the
 trade-offs:
@@ -193,15 +202,16 @@ want each client wired to a server address.
 
 | Medium | Coupling | Upsides | Downsides | Use when |
 |---|---|---|---|---|
-| **Zenoh** — *recommended decoupled default* | **low** — addresses *data* (`{realm}/**`), automatic discovery, many-to-many | RPC via **queryable**, streaming via **pub/sub**; location-transparent; N server instances on one keyspace; **robot/UAV clients already speak it** (a `ZenohBridge`, ROS 2 `rmw_zenoh`); carries protobuf or JSON | younger RPC ecosystem; you define the queryable convention; browsers need a router's WS plugin | the many-project fleet; robotics-native; multiple/replicated server instances |
+| **Zenoh** — *recommended decoupled default* | **low** — addresses *data* (`{realm}/**`), automatic discovery, many-to-many | RPC via **queryable**, streaming via **pub/sub**; location-transparent; N server instances on one keyspace; **robot/UAV clients already speak it** (a `ZenohBridge`, ROS 2 `rmw_zenoh`); carries opaque payloads (JSON today; binary `BulkBlock` for bulk; protobuf only if negotiated) | younger RPC ecosystem; you define the queryable convention; browsers need a router's WS plugin | the many-project fleet; robotics-native; multiple/replicated server instances |
 | **WebSocket + JSON** — *zero-friction fallback* | medium (client → one URL) | works from any language incl. browsers/Tauri-webview; human-readable; no codegen | no typing/codegen; manual correlation; verbose at high rate | quick starts, debugging, the frontend (shipped: `/api/neurocontrol/ws`) |
 | **gRPC** (HTTP/2 + protobuf) — *optional point-to-point* | **high** — client dials a host:port; needs a load balancer to scale | first-class bi-di streaming; typed codegen from `ncp.proto`; deadlines/backpressure | endpoint coupling; browser needs grpc-web/Connect; protoc step | cloud/enterprise point-to-point with a known endpoint |
 | **ROS 2 (DDS) + rosbridge** | low (within ROS) | native for ROS projects; QoS; rosbridge bridges browsers | couples non-ROS projects to ROS; heavy | the project is already ROS 2 |
 | **NATS / MQTT / ZeroMQ** | varies | fast pub/sub (+ NATS req-reply); ubiquitous (MQTT) | weaker typing/RPC; reinvent framing | existing message-bus deployments |
 
 **Decision (proto-native; see [`VERSIONING.md`](VERSIONING.md) and [`RATIONALE.md`](RATIONALE.md)):** treat
-`proto/ncp.proto` as the **normative wire contract** (the source of truth) with the
-**JSON Schemas** as its parity-guarded JSON projection; make **Zenoh the recommended *decoupled* default** for the
+`proto/ncp.proto` as the **normative schema** (the source of truth) — with the
+**JSON Schemas** as its parity-guarded JSON projection and **JSON as the shipped
+runtime serialization** on the bus (§5A); make **Zenoh the recommended *decoupled* default** for the
 bus (RPC via queryable, streaming via pub/sub — so no client is bound to a server
 address); keep **WebSocket/JSON** as the no-dependency fallback (shipped, and what
 a browser/Tauri-based client's frontend uses); treat **gRPC** as an *optional* point-to-point binding
@@ -209,6 +219,71 @@ for deployments that specifically want it. The bus binding is `bus.py`
 (`Bus`/`LocalBus`/`ZenohBus` + `NcpBusServer`/`NcpBusClient`);
 `SessionService.handle_json(message)` is the
 transport-neutral seam every binding calls.
+## 5A. Wire encoding: JSON runtime today, binary `BulkBlock` for bulk, protobuf as the schema
+
+First principles: a *schema* (which fields exist, with what types and names) and an
+*encoding* (how the bytes are laid out on the wire) are independent decisions, and
+NCP makes them separately. The most common misreading of this protocol is to
+conflate "there is a `.proto`" with "protobuf binary is on the wire." It is not —
+not in the reference SDK today.
+
+- **Schema = source of truth = `proto/ncp.proto`.** It fixes message structure,
+  field numbers, types, and the canonical enum *wire strings* (`"V_m"`,
+  `"current_pA"`, …). The JSON Schemas in `schemas/` are its parity-guarded JSON
+  projection (`scripts/check_proto_schema_parity.py`), and `ncp-core`'s Rust `serde`
+  types are conformance-checked against those schemas (`ncp-core/tests/conformance.rs`).
+  This is the contract every binding must agree on, in any encoding.
+
+- **Shipped runtime encoding = JSON.** Every reference peer today serializes the
+  Sensor / Command / RPC planes as JSON via `serde_json` (`ncp-zenoh` publishes
+  `serde_json::to_vec(frame)` and the gateway + WebSocket binding are JSON
+  end-to-end). JSON is the deliberate debuggable default: self-describing,
+  language-neutral, and inspectable on the bus with no codegen. Its cost is small
+  and dominated by in-sim compute, not framing — a `CommandFrame` serializes in
+  ~248 ns / deserializes in ~446 ns at ~215 B, a `SensorFrame` ~223 ns / ~474 ns at
+  ~195 B (release, measured), a fraction of a microsecond against a 20–1000 Hz
+  control budget. See [`PERFORMANCE.md`](PERFORMANCE.md).
+
+- **Binary path = `BulkBlock`, for bulk observations only.** Large numeric arrays
+  (spike trains, `V_m` / `g_ex` / `w` traces) ride a packed little-endian columnar
+  block (`ncp-core::bulk`; proto `BulkObservation`) — parse-free, random-access, and
+  ~2× smaller than `repeated double` / JSON. It is **additive and negotiated**, on
+  the observation / analysis plane only, **never** the hot action loop (see §3,
+  "Bulk option").
+
+- **Protobuf *binary* is defined but not wired.** The `prost` (Rust), `ts-proto`
+  (TS), and `protobuf-python` outputs under `gen/` are **preview** codegen
+  (`buf.gen.yaml`): gitignored, not Cargo workspace members, and with **no `prost`
+  runtime dependency** in any `Cargo.toml`. `ncp-core` is a hand-written `serde`
+  implementation that owns wire *behavior*; `proto/ncp.proto` owns the *schema*. So
+  protobuf is the schema contract and a conformance authority — not the shipped
+  serialization.
+
+**Why JSON and not protobuf binary today?** Because in a closed sensorimotor loop
+the dominant cost is **NEST / in-sim compute**, not frame (de)serialization: at kHz
+the whole NCP contract + safety overhead is ~0.003–0.1 % of the control budget
+(see [`PERFORMANCE.md`](PERFORMANCE.md)). JSON's debuggability is worth more than
+protobuf's byte savings until a bandwidth- or kHz-constrained consumer proves
+otherwise. The clean upgrade path is then an **opt-in, capabilities-negotiated
+binary encoding** for the action / perception planes — exactly how `BulkBlock` was
+added for observations (advertised in the handshake, JSON staying the
+always-available default) — **not** stripping fields from the self-describing JSON
+wire (which would break `validate()` / version diagnosis). This is tracked in
+[`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md) ("Hot action/perception planes are
+JSON-only").
+
+> **Zero-copy caveat (audited, not fixed).** The Zenoh transport compiles in the
+> `shared-memory` feature, but `ZenohBus::put` currently does `payload.to_vec()` on
+> every publish (`ncp-zenoh/src/lib.rs:441`), copying each frame and defeating the
+> SHM zero-copy path. Routing the owned-buffer publish paths through Zenoh
+> `ZBytes` / SHM removes a per-frame copy **with no wire change**. See
+> [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md).
+>
+> **Bulk decode hardening (audited, not fixed).** `BulkBlock::decode` enforces no
+> cumulative allocation budget, so an overlapping/duplicate column directory can
+> amplify memory ~64,000× (OOM DoS) — a receiver-side concern for any peer that
+> accepts bulk observations. See [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md).
+
 
 ## 6. How a project integrates — and why the commander core stays project-agnostic
 
@@ -297,6 +372,33 @@ key words **MUST**, **MUST NOT**, and **MAY** are used as defined in
 [RFC 2119](https://www.rfc-editor.org/rfc/rfc2119.html) and
 [RFC 8174](https://www.rfc-editor.org/rfc/rfc8174.html) (only the uppercase forms
 carry the normative meaning).
+
+**Known safety gaps (audited — not yet fixed).** [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md)
+catalogs 35 audited findings (3 high, 17 medium, 15 low). Several bear directly on
+the conformance rules above and on a plant's own safety enforcement; do **not**
+assume the reference code already handles them (these are *proposals* in the audit,
+and some would be wire-breaking to fully resolve):
+
+- **The `ttl_ms` watchdog can fail OPEN.** An unbounded or non-finite (`+Inf`)
+  `ttl_ms` makes the `CommandWatchdog` deadline backstop never expire
+  (`safety.rs:417` / `:432`), defeating the action-plane liveness rule above. A
+  conformant plant should clamp / sanitize the enforced ttl locally and treat a
+  non-finite ttl as immediately stale.
+- **An empty position channel bypasses the geofence.** A `Some(pos)` with empty
+  `data` is treated as the origin (`r = 0`) and passes the fence (`safety.rs:293`);
+  the horizon look-ahead has the same gap (`safety.rs:338`).
+- **Channel *arity* is unvalidated.** A truncated vec3 position frame makes the
+  geofence under-report distance and fail to ESTOP (`safety.rs:293`); frames should
+  be checked against the negotiated `ChannelSpec` width before enforcement.
+- **Channel *units* are unvalidated free text.** The speed clamp and geofence
+  assume SI units (m/s, m) but never verify the negotiated `ChannelSpec.unit`, so a
+  unit mismatch silently mis-scales (`safety.rs:369`). A canonical SI vocabulary for
+  safety-relevant channels is the proposed fix.
+- **`seq == 0` is an always-accept anti-replay escape hatch** — and `seq = 0` is the
+  wire default (`resilience.rs:48`), so a default-constructed `CommandFrame` bypasses
+  the anti-stale/anti-replay guarantee on the action plane. Treat `seq > 0` as a
+  conformance requirement for `command_frame` on the action plane.
+
 
 **The reference gateway (`ncp-gateway`).** When the commander's brain is NEST (Python)
 — as in the Engram reference — its NCP *server* stays Python. The gateway gives it a production-grade Rust Zenoh edge

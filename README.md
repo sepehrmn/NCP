@@ -37,7 +37,7 @@ Because the data planes are pub/sub, **observers attach for free**: an analysis 
 
 ## Highlights
 
-- **Transport-agnostic core.** `ncp-core` is `serde`-only — no transport, no async. The wire is JSON/protobuf, identical across mediums; Zenoh is the recommended (and currently shipped) transport.
+- **Transport-agnostic core.** `ncp-core` is `serde`-only — no transport, no async. The shipped runtime encoding is **JSON** (`serde_json`) on the Control/Perception/Action planes, plus a compact **binary `BulkBlock`** for bulk observation data; the same bytes are identical across mediums, and Zenoh is the recommended (and currently shipped) transport. `proto/ncp.proto` is the *schema* contract (IDL + conformance), not a second runtime wire — see [Encoding](#encoding-json-runtime-protobuf-schema).
 - **Four QoS planes.** Control RPC, conflating perception, express RealTime action, and a read-only observation tap — each pays only the cost its job needs.
 - **Safety-gated action plane.** A `mode` enum (`init`/`active`/`hold`/`estop`) is an explicit wire authority, backed by a latched ESTOP, `ttl_ms` HOLD fail-safe, a fail-closed command watchdog, and geofence checks.
 - **Per-frame provenance.** `is_simulation_output` and `calibrated_posterior` are mandatory, fail-closed fields — a machine-checkable epistemic discriminator on the hot path.
@@ -46,6 +46,16 @@ Because the data planes are pub/sub, **observers attach for free**: an analysis 
 - **Conformance-tested wire (proto-native).** `proto/ncp.proto` is the normative contract; parity guards + a golden-vector corpus keep everything in lock-step — `conformance.rs` (Rust serde ↔ JSON Schema), `check_proto_schema_parity.py` (proto ↔ JSON Schema), JSON **and** binary golden vectors (`conformance/vectors/`), and a `buf breaking` WIRE/WIRE_JSON gate — so no representation can silently diverge.
 - **Authenticatable action plane.** A default-deny, per-plane Zenoh ACL template (`deploy/zenoh-access-control.json5`) + mutual-TLS enablement steps let only an authenticated commander publish commands; observers stay read-only. The open-realm default is unauthenticated until this is enabled (see `SECURITY.md`).
 - **Polyglot peers.** `proto/ncp.proto` is normative; `ncp-core` is the reference implementation. Python via PyO3, a C ABI for C/C++, and TypeScript types via ts-rs — every peer is wire-identical off the same contract, so the safety/codec logic is written once, not reimplemented per language.
+
+## Encoding: JSON runtime, protobuf schema
+
+NCP separates the **schema contract** from the **runtime encoding** — they are not the same thing, and conflating them is a common misreading.
+
+- **Schema contract (source of truth).** [`proto/ncp.proto`](proto/ncp.proto) is the normative, language-neutral IDL. It defines every message and field, anchors the SemVer wire policy, and is enforced by `buf breaking` plus the golden-vector conformance corpus. Generated artifacts under [`gen/`](gen/) (including the prost Rust types in `gen/rust`) exist for schema parity and tooling — they are **not** compiled into the workspace and **not** on any runtime path (no crate's `Cargo.toml` depends on `prost`).
+- **Runtime encoding (what ships on the wire).** The Control (RPC), Perception, and Action planes carry **JSON** via `serde_json` — human-debuggable, schema-checked, and byte-identical across the Rust/Python/C/TS peers. Bulk observation data (large spike trains / `V_m` traces) uses a compact **binary `BulkBlock`** column codec (`ncp-core::bulk`): parse-free, random-access, ~2× smaller than `repeated double`, and confined to the observation plane — never the hot action loop.
+
+**Why JSON, not protobuf-on-the-wire?** The control loop is dominated by NEST / in-sim compute, not by serialization. A full control tick costs on the order of **~1 µs** — e.g. `CommandFrame` encode ~248 ns / decode ~446 ns at 215 B, `SensorFrame` ~223 ns / ~474 ns at 195 B, `SafetyGovernor.govern` ~140 ns, `ReflexController.step` ~134 ns (measured release-mode by [`ncp-core/examples/overhead.rs`](ncp-core/examples/overhead.rs)); transport adds ~0.1 ms on a Zenoh loopback or tens of µs over SHM. That is ~0.003–0.1 % of a 20–1000 Hz control budget, so JSON's debuggability and zero codegen-coupling win and a binary on-wire encoding buys nothing measurable. If a kHz, bandwidth-constrained consumer ever needs it, protobuf can become an **opt-in, negotiated** encoding without changing the schema contract. The largest remaining *safe* win is internal, not on the wire: `ncp-zenoh`'s `ZenohBus::put` copies each payload (`payload.to_vec()`), which defeats the enabled SHM zero-copy — see [`PERFORMANCE.md`](PERFORMANCE.md) and [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md) for the full cost model and backlog.
+
 
 ## Crates
 
@@ -109,6 +119,7 @@ assert!(check_version("0.9", true).is_err());   // 0.x minor diff -> rejected
 ```bash
 scripts/check.sh              # full conformance / smoke matrix (all crates + bindings)
 cargo test -p ncp-core        # pure, fast: wire-compat + codec + safety + control loop
+cargo run -p ncp-core --release --example overhead   # per-frame ser/de + safety/reflex cost model (see PERFORMANCE.md)
 python scripts/bench_realtime.py   # NEST real-time-factor sweep (see NEST_REALTIME.md)
 python scripts/bench_overlap.py    # transport/compute overlap (GIL) measurement
 ```
@@ -124,8 +135,37 @@ python scripts/bench_overlap.py    # transport/compute overlap (GIL) measurement
 - [`VERSIONING.md`](VERSIONING.md) — the SemVer wire policy, the `buf breaking` enforcement, and the pin guidance.
 - [`GOVERNANCE.md`](GOVERNANCE.md) — the governance model, the mechanical interop gates, and the path to a neutral home.
 - [`SECURITY.md`](SECURITY.md) — threat model, the disclosed action-plane limitation, and the TLS + ACL enablement steps.
+- [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md) — an audited hardening backlog (35 findings, incl. 3 high: a `bulk.rs` decode OOM-DoS, a fail-OPEN unbounded/`+Inf` `ttl_ms` watchdog, and an empty-position geofence bypass). These are catalogued proposals, **not yet applied**.
 - [`CONTRIBUTING.md`](CONTRIBUTING.md) — how to build, test, and propose changes.
 - [`CHANGELOG.md`](CHANGELOG.md) — per-release notes (current: `v0.5.0`).
+
+## Examples
+
+Runnable, self-contained demos of the wire in motion. The pure-`ncp-core` ones need no transport and no NEST; the Zenoh one runs a single in-process session (no router required); the NEST one needs an Engram bridge backend.
+
+```bash
+# Per-frame cost model: JSON (de)serialization, the safety governor, the reflex
+# controller, and the binary BulkBlock vs JSON for the same observation payload.
+cargo run -p ncp-core  --release --example overhead
+
+# Full UAV motion + safety: closed-loop flight to a target, then every safety gate
+# (speed clamp, geofence -> latched ESTOP, stale-sensor HOLD, ttl watchdog,
+# predictive-horizon replay) exercised deterministically.
+cargo run -p ncp-core  --example uav_control_safety
+
+# Drone-in-the-loop over the Zenoh ACTION plane: a controller flies a simulated quad
+# via CommandFrames on the exact key a body subscribes to (engram/ncp/session/<id>/command);
+# mode=hold/estop and the ttl_ms watchdog visibly stop the drone. Writes a JSONL
+# trajectory an external consumer (e.g. crebain) can replay.
+cargo run -p ncp-zenoh --example uav_drone_loop
+
+# Five distinct NEST spiking models (LIF, exp-LIF, Izhikevich, Hodgkin-Huxley,
+# adaptive-EIF) driven through the NCP RPC contract against an Engram NEST bridge.
+python e2e/nest_five_networks.py
+```
+
+The drone-loop and NEST demos show the two halves of the hub model: a commander like **Engram** drives bodies (UAVs/robots) over the action plane and reads spiking models over RPC — the same wire a standalone body like **crebain** speaks when it chooses to federate instead of flying on its own.
+
 
 ## Ecosystem
 
@@ -140,6 +180,14 @@ body, or analysis client speaks the same wire:
 </picture>
 
 The example observer client [`prisoma`](https://github.com/sepahead/prisoma) is public; the other peers shown are illustrative.
+
+Concretely, the reference consumers exercise different roles off the *same* wire:
+
+- **Engram** (a.k.a. Paper2Brain) — the **hub / command-center**: a NEST spiking-simulation backend that drives robots and UAVs interchangeably *through* NCP, acting as the commander on the Control + Action planes.
+- **crebain** — a tactical-UAV application that is **dual-mode**: it runs **standalone** with its own onboard drone stack, **and/or** federates with a commander like Engram over NCP — both or either, with no NCP-specific assumptions baked into the protocol.
+- **prisoma** — a read-only **observer / analysis** client that attaches to the observation plane for free.
+
+That NCP itself is generic — no consumer-specific types, no assumption that a hub or a body is even present — is exactly what lets these very different applications interoperate (and lets each run without the others).
 
 ## FAQ
 
@@ -190,6 +238,10 @@ Not by default. On an open realm the action plane is world-writable; the `mode`/
 governor is defense-in-depth, not network security. Deploy on a trusted closed realm,
 or enable the shipped per-plane Zenoh ACL + mutual TLS — see [`SECURITY.md`](SECURITY.md).
 
+### Is the wire protobuf or JSON?
+Both appear, but they play different roles. **Protobuf is the schema** — [`proto/ncp.proto`](proto/ncp.proto) is the normative IDL the SemVer policy and conformance corpus enforce — **not the shipped runtime encoding.** What actually travels on the Control/Perception/Action planes is **JSON** (`serde_json`); bulk observation data uses a compact **binary `BulkBlock`**. The prost-generated Rust types in `gen/rust` are for parity/tooling and are not compiled into the SDK (no crate depends on `prost`). A protobuf-on-the-wire encoding could be added later as an opt-in negotiated option. See [Encoding](#encoding-json-runtime-protobuf-schema).
+
+
 ## Status
 
 NCP is **pre-1.0 and experimental.** Specifically:
@@ -197,6 +249,7 @@ NCP is **pre-1.0 and experimental.** Specifically:
 - **The wire may change.** Minor versions are treated as breaking; the version guard fails closed rather than coercing. **Pin the latest tag** (`tag = "v0.5.0"` above — the wire is `0.5`, with `v0.5.0` the buf-breaking baseline) for anything you build against.
 - **Single reference implementation.** `proto/ncp.proto` is the normative contract; `ncp-core` (Rust) is the reference implementation and Python/C/TS are bindings off the same contract, verified by field-set-parity drift guards — not yet a multi-implementation conformance program.
 - **The action plane is currently unauthenticated.** On an open realm it is effectively world-writable: anyone who can reach the realm can publish commands. The local `mode`/`ttl_ms` governor is defense-in-depth, **not** network security. Deploy only on a trusted, closed realm. See [`SECURITY.md`](SECURITY.md) and the P0 work in [`ROADMAP.md`](ROADMAP.md).
+- **A hardening backlog is open and audited.** [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md) catalogs 35 reviewed findings (3 high — incl. a `bulk.rs` decode OOM-DoS, a fail-OPEN unbounded/`+Inf` `ttl_ms` watchdog, and an empty-position geofence bypass), each annotated `safe` (internal) vs `wire-breaking`. They are **proposals — none are applied yet**, so do not assume any are fixed.
 
 ## Citing
 

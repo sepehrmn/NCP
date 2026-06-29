@@ -11,6 +11,17 @@ authorization on this plane today.
 Zenoh network). Do not expose the action/command plane on an open or shared
 realm.
 
+**The realm is addressing, not authentication.** A "realm" is just the leading
+segment of the Zenoh key-expression (`{realm}/session/*/…`, built in
+`ncp-core/src/keys.rs`) — a namespace prefix that keeps multiple NCP deployments
+from colliding on a shared bus. It is *not* a security boundary: the realm string
+is never checked against any credential, so knowing or guessing it grants no
+rights and withholding it confers no protection. What actually gates access is the
+reachability of the underlying Zenoh network plus the ACL/mTLS below — never the
+key prefix. "Closed realm" above therefore means *a closed Zenoh network* (network
+isolation, plus the ACL/mTLS that follow), not a secret realm name. Treat the
+realm as routing metadata, never as a credential.
+
 ### Local fail-safe
 
 As a defense-in-depth fail-safe, action bodies enforce `mode` and `ttl_ms`
@@ -126,6 +137,62 @@ The four-step checklist + the no-cert refusal are automated by
 against a live mTLS+ACL realm to produce the P0 evidence in one command. It
 exercises both PUT-authority invariants (command and sensor) and the mTLS
 no-cert rejection, exiting 0 only when all five hold.
+
+## Residual risks after mTLS + ACL (hardening backlog)
+
+Enabling mutual TLS and the per-plane ACL closes the world-writable command and
+perception **PUT** surface (the P0 invariants above). It does **not** make NCP
+fully hardened. An adversarial review catalogued the remaining items in
+[`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md) (none are fixed yet); the
+security-relevant ones are summarised below. Do not read this section as a claim
+that these are mitigated.
+
+### RPC authorization is all-or-nothing per realm (no per-verb ACL)
+
+The entire session-lifecycle RPC surface is a **single Zenoh queryable key**
+(`{realm}/rpc`), so the ACL can only grant or deny `query` on *all* RPC verbs at
+once. The shipped template (`deploy/zenoh-access-control.json5`, the
+`client-queries-rpc` rule) must let the `robot` and `observer` subjects query that
+key — otherwise a default-deny realm could never open a session — which means the
+same grant that lets them `open` also lets them `step`, `run`, or **`close` any
+session**, not just their own. mTLS proves *who* the caller is, but the transport
+ACL matches on the key-expression and cannot see *which verb* is inside the
+JSON-RPC body, so it cannot scope it.
+
+Two fixes (see `KNOWN_LIMITATIONS.md`, `zenoh-access-control.json5:81`): split the
+privileged verbs onto distinct key-expressions (e.g. `{realm}/rpc/open` vs
+`{realm}/rpc/admin`) so the ACL can allow `open` while restricting `step`/`close`
+to the `commander` — robust, but **wire-breaking** (it changes the RPC addressing
+every peer uses, so it needs a version bump + consumer buy-in); or keep the single
+key and have the RPC handler authorize the caller's *proven* mTLS identity per
+verb in application code. Until one ships, treat every authenticated client as
+able to disrupt any session, and rely on closed-network isolation for the rest.
+
+### Bulk/observation decode is a memory-amplification DoS vector
+
+`BulkBlock::decode` (`ncp-core/src/bulk.rs`) sizes each column's allocation from
+attacker-controlled `n_rows`/`data_off` directory fields with **no cumulative
+allocation budget**, so a small block whose columns overlap or duplicate can
+declare far more total payload than it actually carries — an audited **~64,000x
+memory amplification / OOM denial-of-service** (`KNOWN_LIMITATIONS.md`, High). This
+is reachable by any peer that can publish on the observation plane, so it is *not*
+mitigated by the command/sensor PUT ACL — and bulk/observation data is the binary
+`BulkBlock` plane, distinct from the JSON sensor/command frames. The proposed fix
+is a running allocation budget bounded by the input length (reject when the summed
+declared `data_len` exceeds `bytes.len()`); it is internal and **wire-compatible**,
+because every conforming block already lays its columns out disjointly. Until it
+lands, ingest bulk data only from trusted publishers.
+
+### The local safety governor has fail-OPEN edge cases
+
+The `mode`/`ttl_ms` governor described under **Local fail-safe** is
+defense-in-depth, not authentication — and the audit found inputs that make it
+fail *open* rather than closed: an unbounded or non-finite (`+Inf`) `ttl_ms` can
+disable the `CommandWatchdog` deadline backstop, and an empty position channel is
+treated as the origin and so bypasses the geofence
+(`KNOWN_LIMITATIONS.md`, High; `ncp-core/src/safety.rs`). These are
+local-enforcement bugs with wire-compatible fixes, but until they are fixed they
+weaken the receiver-side fail-safe that the closed-realm guidance leans on.
 
 ## Supported versions
 

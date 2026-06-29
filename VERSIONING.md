@@ -21,7 +21,9 @@ projection) with [SemVer](https://semver.org): `MAJOR.MINOR.PATCH`.
 package carry their own SemVer (see `Cargo.toml` / `package.json` for the current
 SDK version — the manifests are the single source of truth) for the SDK. They usually move
 together, but a PATCH that touches only code/docs/build artifacts (e.g. `0.5.0` →
-`0.5.1`) leaves the wire at `0.5`. **Pin `tag = "v0.5.0"`** for the wire baseline
+`0.5.1` → `0.5.2`, the current SDK release) leaves the wire at `0.5` — a
+`v0.5.0` peer is wire-identical to a `v0.5.2` peer (same `CONTRACT_HASH`
+`24e8e6e31e1dec8a`). **Pin `tag = "v0.5.0"`** for the wire baseline
 (what the `buf breaking` gate compares against); the crate at that-or-later tag is
 wire-`0.5`-compatible.
 
@@ -90,6 +92,45 @@ The two checks are **separated by concern** (since v0.4):
 Separating the two means additive evolution and naming-only proto changes never break
 any version-compatible commander↔plant flow, while drift is still surfaced for
 operators.
+## Where the version gate runs — and the data-plane gap
+
+The compatibility gate is a **session-establishment** check, not a per-frame one.
+`check_version` runs once, at `OpenSession`, inside `negotiate` on the *control*
+plane (engram's `SessionService.handle`; the Zenoh client
+`ncp-zenoh::ZenohNcpClient::open`). Once a session is open, the hot **data plane**
+— `SensorFrame` on the perception plane, `CommandFrame` on the action plane — is
+*not* re-gated per frame: those decoders deserialize and act on the frame without
+calling `check_version`.
+
+This is a deliberate first-principles trade-off. The per-tick budget on the
+action/perception planes is microseconds (a full control tick is ~1 µs — see
+`PERFORMANCE.md`), so re-parsing and re-checking a version string on every
+20–1000 Hz frame would be pure tax for no new information: both peers already
+proved wire compatibility at `OpenSession`. Within a correctly-handshaked
+session the gate has done its job.
+
+**Known limitation (audited, not yet fixed).** The opening line of this document
+— "every message carries a string `ncp_version`" — is a *spec* requirement that
+the runtime does **not** currently enforce on the data plane. The serde message
+types are `#[serde(default)]`, and `required_fields()` (`messages.rs`) does **not**
+list `ncp_version` for any `kind`, so an absent version silently defaults to our
+own and an *incompatible-but-parseable* sensor/command frame is **accepted**
+rather than dropped. A transport that delivers frames from a mismatched peer
+straight onto the data plane (bypassing the `OpenSession` handshake) therefore
+evades the version gate entirely. `diagnose_version` exists only as a best-effort
+helper a receiver *may* call to log *why* a frame is incompatible; it is advisory,
+is not invoked as a hard gate by the core decoders, and returns `None` for a
+frame that carries no version at all — so it cannot catch the absent-version case
+either.
+
+This is catalogued as a **`wire-breaking`** finding in `KNOWN_LIMITATIONS.md`: the
+fix (have data-plane decoders call `check_version` per frame, and/or add
+`ncp_version` to `required_fields()` for every `kind`) changes what a conforming
+peer MUST send, so it requires a version bump and consumer buy-in across
+Engram/crebain/prisoma — hence it is documented, not yet applied. Until then, do
+not assume the data plane enforces version compatibility: rely on the
+`OpenSession` handshake for version agreement and on transport-level peer
+authentication (mTLS) to keep unhandshaked peers off the planes.
 
 ## Contract hash (the wire-identity digest)
 
